@@ -149,6 +149,26 @@ public class GlobalExceptionHandler {
 		return p;
 	}
 
+	@ExceptionHandler(VoteIdeaUseCase.ParticipantNotEligibleException.class)
+	public ProblemDetail handleParticipantNotEligible(VoteIdeaUseCase.ParticipantNotEligibleException ex) {
+		ProblemDetail p = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+		p.setType(URI.create("/errors/not-voting-participant"));
+		p.setTitle("Not Eligible to Vote");
+		p.setDetail(ex.getMessage());
+		return p;
+	}
+
+	@ExceptionHandler({VoteIdeaUseCase.VoteLimitExceededException.class,
+			VoteIdeaUseCase.OwnDepartmentVoteLimitExceededException.class,
+			VoteIdeaUseCase.ProjectDepartmentUnknownException.class})
+	public ProblemDetail handleVotingRuleConflict(RuntimeException ex) {
+		ProblemDetail p = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+		p.setType(URI.create("/errors/voting-rule-conflict"));
+		p.setTitle("Voting Rule Conflict");
+		p.setDetail(ex.getMessage());
+		return p;
+	}
+
 	@ExceptionHandler(IdeaScore.InvalidScoreException.class)
 	public ProblemDetail handleInvalidScore(IdeaScore.InvalidScoreException ex) {
 		ProblemDetail p = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);

@@ -69,6 +69,19 @@ describe('IdeaService', () => {
       expect(mockApi.get).toHaveBeenCalledWith('/api/v1/ideas/idea-1')
       expect(result.title).toBe('AI Debugger')
     })
+
+    it('parses persisted project attachments', async () => {
+      mockApi.get.mockResolvedValueOnce({
+        ...BASE_IDEA,
+        projectAttachments: JSON.stringify([
+          { type: 'screenshot', name: 'Demo', url: '/storage/demo', storageKey: 'projects/demo.png' },
+        ]),
+      })
+      const result = await IdeaService.getIdea('idea-1')
+      expect(result.projectAttachments).toEqual([
+        { type: 'screenshot', name: 'Demo', url: '/storage/demo', storageKey: 'projects/demo.png' },
+      ])
+    })
   })
 
   describe('createIdea', () => {
@@ -92,6 +105,20 @@ describe('IdeaService', () => {
       const result = await IdeaService.updateIdea('idea-1', { title: 'Updated Idea' })
       expect(mockApi.put).toHaveBeenCalledWith('/api/v1/ideas/idea-1', { title: 'Updated Idea' })
       expect(result.title).toBe('Updated Idea')
+    })
+
+    it('serializes project attachments for the JSON database field', async () => {
+      const attachment = {
+        type: 'screenshot' as const,
+        name: 'Demo',
+        url: '/storage/demo',
+        storageKey: 'projects/demo.png',
+      }
+      mockApi.put.mockResolvedValueOnce({ ...BASE_IDEA, projectAttachments: [attachment] })
+      await IdeaService.updateIdea('idea-1', { projectAttachments: [attachment] })
+      expect(mockApi.put).toHaveBeenCalledWith('/api/v1/ideas/idea-1', {
+        projectAttachments: JSON.stringify([attachment]),
+      })
     })
   })
 

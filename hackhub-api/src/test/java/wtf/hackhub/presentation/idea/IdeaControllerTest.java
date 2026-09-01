@@ -133,6 +133,14 @@ class IdeaControllerTest {
 	}
 
 	@Test
+	void vote_rule_violation_returns_409_with_detail() throws Exception {
+		when(voteIdeaUseCase.execute(any(), any())).thenThrow(new VoteIdeaUseCase.VoteLimitExceededException(4));
+		mvc.perform(post("/api/v1/ideas/" + IDEA_ID + "/votes").with(MockAuthHelper.asParticipant(USER_ID)))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.title").value("Voting Rule Conflict"))
+				.andExpect(jsonPath("$.detail").value("Each participant can cast at most 4 votes per hackathon."));
+	}
+
+	@Test
 	void list_comments_returns_array() throws Exception {
 		when(commentUseCase.listForIdea(IDEA_ID)).thenReturn(List.of(new Comment(IDEA_ID, USER_ID, "nice!")));
 		mvc.perform(get("/api/v1/ideas/" + IDEA_ID + "/comments").with(MockAuthHelper.asParticipant(USER_ID)))

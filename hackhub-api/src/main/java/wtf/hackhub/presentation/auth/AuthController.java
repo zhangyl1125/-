@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -34,13 +35,16 @@ public class AuthController {
 	private final LoginUseCase loginUseCase;
 	private final RefreshTokenUseCase refreshTokenUseCase;
 	private final LogoutUseCase logoutUseCase;
+	private final boolean cookieSecure;
 
 	public AuthController(RegisterUseCase registerUseCase, LoginUseCase loginUseCase,
-			RefreshTokenUseCase refreshTokenUseCase, LogoutUseCase logoutUseCase) {
+			RefreshTokenUseCase refreshTokenUseCase, LogoutUseCase logoutUseCase,
+			@Value("${app.auth.cookie-secure:true}") boolean cookieSecure) {
 		this.registerUseCase = registerUseCase;
 		this.loginUseCase = loginUseCase;
 		this.refreshTokenUseCase = refreshTokenUseCase;
 		this.logoutUseCase = logoutUseCase;
+		this.cookieSecure = cookieSecure;
 	}
 
 	@Operation(summary = "Register a new user account")
@@ -93,13 +97,13 @@ public class AuthController {
 	// ── helpers ───────────────────────────────────────────────────────────────
 
 	private ResponseCookie refreshCookie(String token) {
-		return ResponseCookie.from(REFRESH_COOKIE, token).httpOnly(true).secure(true).path("/api/v1/auth")
+		return ResponseCookie.from(REFRESH_COOKIE, token).httpOnly(true).secure(cookieSecure).path("/api/v1/auth")
 				.maxAge(REFRESH_COOKIE_TTL).sameSite("Strict").build();
 	}
 
 	private ResponseCookie clearCookie() {
-		return ResponseCookie.from(REFRESH_COOKIE, "").httpOnly(true).secure(true).path("/api/v1/auth").maxAge(0)
-				.sameSite("Strict").build();
+		return ResponseCookie.from(REFRESH_COOKIE, "").httpOnly(true).secure(cookieSecure).path("/api/v1/auth")
+				.maxAge(0).sameSite("Strict").build();
 	}
 
 	private String extractRefreshCookie(HttpServletRequest request) {

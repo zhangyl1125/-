@@ -24,10 +24,11 @@ export interface Idea {
 }
 
 export interface ProjectAttachment {
-  type: 'screenshot' | 'video' | 'document' | 'link'
+  type: 'screenshot' | 'repository' | 'demo' | 'video' | 'document' | 'link'
   url: string
   name: string
   description?: string
+  storageKey?: string
 }
 
 export interface CreateIdeaInput {
@@ -39,26 +40,82 @@ export interface CreateIdeaInput {
   tags?: string[]
 }
 
+export interface UpdateIdeaInput {
+  title?: string
+  description?: string
+  category?: string
+  tags?: string[]
+  status?: Idea['status']
+  repositoryUrl?: string | null
+  demoUrl?: string | null
+  projectAttachments?: ProjectAttachment[] | null
+}
+
 export interface VoteResult {
   voted: boolean
   voteCount: number
 }
 
+type IdeaResponse = Omit<Idea, 'projectAttachments'> & {
+  projectAttachments: ProjectAttachment[] | string | null
+}
+
+function normalizeIdea(idea: IdeaResponse): Idea {
+  let projectAttachments: ProjectAttachment[] = []
+  if (Array.isArray(idea.projectAttachments)) {
+    projectAttachments = idea.projectAttachments
+  } else if (idea.projectAttachments) {
+    try {
+      const parsed: unknown = JSON.parse(idea.projectAttachments)
+      if (Array.isArray(parsed)) projectAttachments = parsed as ProjectAttachment[]
+    } catch {
+      projectAttachments = []
+    }
+  }
+  projectAttachments = projectAttachments.map((attachment) => {
+    if (attachment.storageKey) return attachment
+    try {
+      const path = new URL(attachment.url, window.location.origin).pathname
+      const bucketPrefix = '/hackhub-project-attachments/'
+      const prefixIndex = path.indexOf(bucketPrefix)
+      if (prefixIndex >= 0) {
+        return {
+          ...attachment,
+          storageKey: decodeURIComponent(path.slice(prefixIndex + bucketPrefix.length)),
+        }
+      }
+    } catch {
+      // Preserve external or legacy URLs unchanged.
+    }
+    return attachment
+  })
+  return { ...idea, projectAttachments }
+}
+
 export class IdeaService {
   static async getIdeas(hackathonId: string, page = 0, size = 20): Promise<PageResponse<Idea>> {
-    return api.get(`/api/v1/hackathons/${hackathonId}/ideas?page=${page}&size=${size}`)
+    const response = await api.get<PageResponse<IdeaResponse>>(
+      `/api/v1/hackathons/${hackathonId}/ideas?page=${page}&size=${size}`
+    )
+    return { ...response, content: response.content.map(normalizeIdea) }
   }
 
   static async getIdea(id: string): Promise<Idea> {
-    return api.get(`/api/v1/ideas/${id}`)
+    return normalizeIdea(await api.get<IdeaResponse>(`/api/v1/ideas/${id}`))
   }
 
   static async createIdea(data: CreateIdeaInput): Promise<Idea> {
-    return api.post(`/api/v1/hackathons/${data.hackathonId}/ideas`, data)
+    return normalizeIdea(await api.post<IdeaResponse>(`/api/v1/hackathons/${data.hackathonId}/ideas`, data))
   }
 
-  static async updateIdea(id: string, updates: Partial<CreateIdeaInput>): Promise<Idea> {
-    return api.put(`/api/v1/ideas/${id}`, updates)
+  static async updateIdea(id: string, updates: UpdateIdeaInput): Promise<Idea> {
+    const payload = {
+      ...updates,
+      ...(updates.projectAttachments !== undefined
+        ? { projectAttachments: JSON.stringify(updates.projectAttachments ?? []) }
+        : {}),
+    }
+    return normalizeIdea(await api.put<IdeaResponse>(`/api/v1/ideas/${id}`, payload))
   }
 
   static async deleteIdea(id: string): Promise<void> {

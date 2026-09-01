@@ -14,9 +14,12 @@ import {
   SimpleGrid,
   Badge,
   Tooltip,
-  Alert
+  Alert,
+  FileInput,
 } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
 import { IconPlus, IconTrash, IconExternalLink, IconUpload, IconBrandGithub, IconWorldWww } from '@tabler/icons-react'
+import { StorageService } from '../services/storageService'
 // Local attachment type used for the UI form — maps to ProjectAttachment in ideaService
 // but adds id and display_order for client-side keying.
 export interface ProjectAttachment {
@@ -26,6 +29,7 @@ export interface ProjectAttachment {
   title: string
   description?: string
   display_order: number
+  storageKey?: string
 }
 
 interface ProjectAttachmentsProps {
@@ -56,6 +60,8 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
 }) => {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingAttachment, setEditingAttachment] = useState<ProjectAttachment | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [newAttachment, setNewAttachment] = useState<Partial<ProjectAttachment>>({
     type: 'screenshot',
     title: '',
@@ -63,31 +69,72 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
     url: ''
   })
 
-  const handleAddAttachment = () => {
-    if (!newAttachment.title || !newAttachment.url) return
+  const uploadSelectedFile = async () => {
+    if (!selectedFile) return null
+    setUploading(true)
+    try {
+      return await StorageService.uploadFile(selectedFile, 'project-attachments', 'projects')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleAddAttachment = async () => {
+    if (!newAttachment.title || (!newAttachment.url && !selectedFile)) return
+
+    let upload: Awaited<ReturnType<typeof uploadSelectedFile>> = null
+    try {
+      upload = await uploadSelectedFile()
+    } catch (error) {
+      notifications.show({
+        title: 'Upload failed',
+        message: error instanceof Error ? error.message : 'Unable to upload project image',
+        color: 'red',
+      })
+      return
+    }
 
     const attachment: ProjectAttachment = {
       id: crypto.randomUUID(),
       type: newAttachment.type as 'screenshot' | 'repository' | 'demo',
-      url: newAttachment.url,
+      url: upload?.url ?? newAttachment.url!,
       title: newAttachment.title,
       description: newAttachment.description,
-      display_order: attachments.length
+      display_order: attachments.length,
+      storageKey: upload?.key,
     }
 
     onAttachmentsChange([...attachments, attachment])
     setNewAttachment({ type: 'screenshot', title: '', description: '', url: '' })
+    setSelectedFile(null)
     setModalOpen(false)
   }
 
-  const handleUpdateAttachment = () => {
+  const handleUpdateAttachment = async () => {
     if (!editingAttachment) return
 
+    let upload: Awaited<ReturnType<typeof uploadSelectedFile>> = null
+    try {
+      upload = await uploadSelectedFile()
+    } catch (error) {
+      notifications.show({
+        title: 'Upload failed',
+        message: error instanceof Error ? error.message : 'Unable to upload project image',
+        color: 'red',
+      })
+      return
+    }
+
+    const replacement = upload
+      ? { ...editingAttachment, url: upload.url, storageKey: upload.key }
+      : editingAttachment
+
     const updated = attachments.map(att => 
-      att.id === editingAttachment.id ? editingAttachment : att
+      att.id === editingAttachment.id ? replacement : att
     )
     onAttachmentsChange(updated)
     setEditingAttachment(null)
+    setSelectedFile(null)
     setModalOpen(false)
   }
 
@@ -296,6 +343,7 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
         onClose={() => {
           setModalOpen(false)
           setEditingAttachment(null)
+          setSelectedFile(null)
           setNewAttachment({ type: 'screenshot', title: '', description: '', url: '' })
         }}
         title={editingAttachment ? 'Edit Attachment' : 'Add Attachment'}
@@ -312,6 +360,7 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
             value={editingAttachment?.type || newAttachment.type}
             onChange={(value) => {
               const attachmentType = value as 'screenshot' | 'repository' | 'demo'
+              if (attachmentType !== 'screenshot') setSelectedFile(null)
               if (editingAttachment) {
                 setEditingAttachment({ ...editingAttachment, type: attachmentType })
               } else {
@@ -332,6 +381,18 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
               }
             }}
           />
+
+          {(editingAttachment?.type || newAttachment.type) === 'screenshot' && (
+            <FileInput
+              label="Upload image"
+              placeholder="Choose an image"
+              accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+              leftSection={<IconUpload size={16} />}
+              value={selectedFile}
+              onChange={setSelectedFile}
+              clearable
+            />
+          )}
           
           <TextInput
             label="URL"
@@ -365,6 +426,7 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
               onClick={() => {
                 setModalOpen(false)
                 setEditingAttachment(null)
+                setSelectedFile(null)
                 setNewAttachment({ type: 'screenshot', title: '', description: '', url: '' })
               }}
               type="button"
@@ -373,7 +435,11 @@ export const ProjectAttachments: React.FC<ProjectAttachmentsProps> = ({
             </Button>
             <Button
               onClick={editingAttachment ? handleUpdateAttachment : handleAddAttachment}
-              disabled={!(editingAttachment?.title || newAttachment.title) || !(editingAttachment?.url || newAttachment.url)}
+              disabled={
+                !(editingAttachment?.title || newAttachment.title) ||
+                !(editingAttachment?.url || newAttachment.url || selectedFile)
+              }
+              loading={uploading}
               type="button"
             >
               {editingAttachment ? 'Update' : 'Add'}

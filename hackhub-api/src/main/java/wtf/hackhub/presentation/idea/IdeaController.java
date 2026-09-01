@@ -43,8 +43,10 @@ public class IdeaController {
 	@ApiResponses({@ApiResponse(responseCode = "200", description = "Success"),
 			@ApiResponse(responseCode = "401", description = "Not authenticated")})
 	@GetMapping("/api/v1/hackathons/{hackathonId}/ideas")
-	public Page<IdeaResponse> listByHackathon(@PathVariable UUID hackathonId, Pageable pageable) {
-		return getIdeasUseCase.listByHackathon(hackathonId, pageable).map(IdeaResponse::from);
+	public Page<IdeaResponse> listByHackathon(@PathVariable UUID hackathonId, Pageable pageable,
+			@AuthenticationPrincipal UUID userId) {
+		return getIdeasUseCase.listByHackathon(hackathonId, pageable)
+				.map(idea -> IdeaResponse.from(idea, getIdeasUseCase.hasVoted(idea.getId(), userId)));
 	}
 
 	@Operation(summary = "Submit a new idea to a hackathon")
@@ -56,7 +58,7 @@ public class IdeaController {
 	public IdeaResponse create(@PathVariable UUID hackathonId, @Valid @RequestBody CreateIdeaRequest req,
 			@AuthenticationPrincipal UUID userId) {
 		return IdeaResponse.from(submitIdeaUseCase.execute(req.title(), req.description(), hackathonId, req.teamId(),
-				userId, req.category(), req.tags()));
+				userId, req.category(), req.tags()), false);
 	}
 
 	@Operation(summary = "Get an idea by ID")
@@ -64,8 +66,8 @@ public class IdeaController {
 			@ApiResponse(responseCode = "401", description = "Not authenticated"),
 			@ApiResponse(responseCode = "404", description = "Idea not found")})
 	@GetMapping("/api/v1/ideas/{id}")
-	public IdeaResponse getById(@PathVariable UUID id) {
-		return IdeaResponse.from(getIdeasUseCase.getById(id));
+	public IdeaResponse getById(@PathVariable UUID id, @AuthenticationPrincipal UUID userId) {
+		return IdeaResponse.from(getIdeasUseCase.getById(id), getIdeasUseCase.hasVoted(id, userId));
 	}
 
 	@Operation(summary = "Update an existing idea")
@@ -79,7 +81,7 @@ public class IdeaController {
 		Idea idea = submitIdeaUseCase.update(id, userId, req.title(), req.description(), req.category(), req.tags(),
 				req.status() != null ? Idea.Status.valueOf(req.status().toUpperCase().replace("-", "_")) : null,
 				req.repositoryUrl(), req.demoUrl(), req.projectAttachments());
-		return IdeaResponse.from(idea);
+		return IdeaResponse.from(idea, getIdeasUseCase.hasVoted(id, userId));
 	}
 
 	@Operation(summary = "Delete an idea")
@@ -140,12 +142,12 @@ public class IdeaController {
 	public record IdeaResponse(UUID id, String title, String description, UUID hackathonId, UUID teamId, UUID createdBy,
 			String category, List<String> tags, int votes, String status, List<String> attachments,
 			String repositoryUrl, String demoUrl, String projectAttachments, BigDecimal totalScore, int voteCount,
-			Instant createdAt, Instant updatedAt) {
-		static IdeaResponse from(Idea i) {
+			boolean userHasVoted, Instant createdAt, Instant updatedAt) {
+		static IdeaResponse from(Idea i, boolean userHasVoted) {
 			return new IdeaResponse(i.getId(), i.getTitle(), i.getDescription(), i.getHackathonId(), i.getTeamId(),
 					i.getCreatedBy(), i.getCategory(), i.getTags(), i.getVotes(), i.getStatus().toDbValue(),
 					i.getAttachments(), i.getRepositoryUrl(), i.getDemoUrl(), i.getProjectAttachments(),
-					i.getTotalScore(), i.getVoteCount(), i.getCreatedAt(), i.getUpdatedAt());
+					i.getTotalScore(), i.getVoteCount(), userHasVoted, i.getCreatedAt(), i.getUpdatedAt());
 		}
 	}
 

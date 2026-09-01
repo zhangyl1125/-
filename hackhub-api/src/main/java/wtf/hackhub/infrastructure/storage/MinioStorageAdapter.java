@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import wtf.hackhub.application.storage.StoragePort;
 
 import java.io.InputStream;
+import java.net.URI;
 import java.util.concurrent.TimeUnit;
 
 @Component
@@ -31,8 +32,10 @@ public class MinioStorageAdapter implements StoragePort {
 	@Override
 	public String presignedDownloadUrl(String bucket, String key, int expirySeconds) {
 		try {
-			return minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder().method(Method.GET)
+			String signedUrl = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder().method(Method.GET)
 					.bucket(bucket).object(key).expiry(expirySeconds, TimeUnit.SECONDS).build());
+			URI uri = URI.create(signedUrl);
+			return "/storage" + uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
 		} catch (Exception e) {
 			throw new StorageException("Failed to generate pre-signed URL for: " + key, e);
 		}

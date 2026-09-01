@@ -87,6 +87,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-hackhub_secret}
       JWT_ACCESS_TOKEN_EXPIRY: 900
       JWT_REFRESH_TOKEN_EXPIRY: 604800
+      # This Compose stack is served over HTTP. Set true when deploying behind HTTPS.
+      APP_AUTH_COOKIE_SECURE: ${APP_AUTH_COOKIE_SECURE:-false}
       # JWT_PRIVATE_KEY and JWT_PUBLIC_KEY must be provided via .env or environment
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}

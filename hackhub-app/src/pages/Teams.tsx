@@ -85,6 +85,7 @@ const parseProjectData = (idea: Idea | null) => {
         title: a.name,
         description: a.description,
         display_order: i,
+        storageKey: a.storageKey,
       } satisfies ProjectAttachment)),
     }
   }
@@ -94,6 +95,14 @@ const parseProjectData = (idea: Idea | null) => {
     projectAttachments: [] as ProjectAttachment[],
   }
 }
+
+const toIdeaAttachments = (attachments: ProjectAttachment[]) => attachments.map((attachment) => ({
+  type: attachment.type,
+  url: attachment.url,
+  name: attachment.title,
+  description: attachment.description,
+  storageKey: attachment.storageKey,
+}))
 
 export function Teams() {
   const { id: routeHackathonId } = useParams<{ id: string }>()
@@ -313,7 +322,7 @@ export function Teams() {
       // Create the associated idea if provided
       if (values.ideaTitle && values.ideaTitle.trim()) {
         console.log('💡 Creating idea for team:', newTeam.id)
-        await IdeaService.createIdea({
+        const idea = await IdeaService.createIdea({
           title: values.ideaTitle,
           description: values.ideaDescription || '',
           hackathonId: hackathonId,
@@ -322,6 +331,17 @@ export function Teams() {
             ? values.ideaTags
             : (values.ideaTags as string).split(',').map((tag: string) => tag.trim()).filter(Boolean),
           teamId: newTeam.id,
+        })
+        await IdeaService.updateIdea(idea.id, {
+          title: values.ideaTitle,
+          description: values.ideaDescription || '',
+          category: values.ideaCategory || 'Other',
+          tags: Array.isArray(values.ideaTags)
+            ? values.ideaTags
+            : (values.ideaTags as string).split(',').map((tag: string) => tag.trim()).filter(Boolean),
+          repositoryUrl: values.repositoryUrl || null,
+          demoUrl: values.demoUrl || null,
+          projectAttachments: toIdeaAttachments(values.projectAttachments),
         })
         console.log('✅ Idea created successfully')
       } else {
@@ -422,25 +442,32 @@ export function Teams() {
 
           if (existingIdeas.length > 0) {
             const existingIdea = existingIdeas[0]
-            const ideaUpdateData: Partial<import('../services/ideaService').CreateIdeaInput> = {}
-            if (values.ideaTitle) ideaUpdateData.title = values.ideaTitle
-            if (values.ideaDescription) ideaUpdateData.description = values.ideaDescription
-            if (values.ideaCategory) ideaUpdateData.category = values.ideaCategory
-            if (values.ideaTags && values.ideaTags.length > 0) {
-              ideaUpdateData.tags = Array.isArray(values.ideaTags) ? values.ideaTags : [values.ideaTags].filter(Boolean)
-            }
-
-            if (Object.keys(ideaUpdateData).length > 0) {
-              await IdeaService.updateIdea(existingIdea.id, ideaUpdateData)
-            }
+            await IdeaService.updateIdea(existingIdea.id, {
+              title: values.ideaTitle || existingIdea.title,
+              description: values.ideaDescription || existingIdea.description,
+              category: values.ideaCategory || existingIdea.category,
+              tags: Array.isArray(values.ideaTags) ? values.ideaTags : [values.ideaTags].filter(Boolean),
+              repositoryUrl: values.repositoryUrl || null,
+              demoUrl: values.demoUrl || null,
+              projectAttachments: toIdeaAttachments(values.projectAttachments),
+            })
           } else if (values.ideaTitle && values.ideaDescription && values.ideaCategory) {
-            await IdeaService.createIdea({
+            const idea = await IdeaService.createIdea({
               title: values.ideaTitle,
               description: values.ideaDescription,
               category: values.ideaCategory,
               tags: Array.isArray(values.ideaTags) ? values.ideaTags : [values.ideaTags].filter(Boolean),
               hackathonId: values.hackathonId,
               teamId: selectedTeam.id,
+            })
+            await IdeaService.updateIdea(idea.id, {
+              title: values.ideaTitle,
+              description: values.ideaDescription,
+              category: values.ideaCategory,
+              tags: Array.isArray(values.ideaTags) ? values.ideaTags : [values.ideaTags].filter(Boolean),
+              repositoryUrl: values.repositoryUrl || null,
+              demoUrl: values.demoUrl || null,
+              projectAttachments: toIdeaAttachments(values.projectAttachments),
             })
           }
         } catch (ideaError) {

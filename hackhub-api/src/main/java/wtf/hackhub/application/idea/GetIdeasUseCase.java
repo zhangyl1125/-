@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import wtf.hackhub.domain.Idea;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaRepository;
+import wtf.hackhub.infrastructure.persistence.idea.IdeaVoteRepository;
 
 import java.util.UUID;
 
@@ -13,9 +14,11 @@ import java.util.UUID;
 public class GetIdeasUseCase {
 
 	private final IdeaRepository ideaRepository;
+	private final IdeaVoteRepository voteRepository;
 
-	public GetIdeasUseCase(IdeaRepository ideaRepository) {
+	public GetIdeasUseCase(IdeaRepository ideaRepository, IdeaVoteRepository voteRepository) {
 		this.ideaRepository = ideaRepository;
+		this.voteRepository = voteRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -26,5 +29,10 @@ public class GetIdeasUseCase {
 	@Transactional(readOnly = true)
 	public Idea getById(UUID id) {
 		return ideaRepository.findById(id).orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(id));
+	}
+
+	@Transactional(readOnly = true)
+	public boolean hasVoted(UUID ideaId, UUID userId) {
+		return userId != null && voteRepository.existsByIdeaIdAndUserId(ideaId, userId);
 	}
 }

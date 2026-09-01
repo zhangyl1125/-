@@ -17,6 +17,9 @@ import {
   Modal,
   Center,
   Alert,
+  Image,
+  FileInput,
+  Textarea,
 } from '@mantine/core'
 import {
   IconTrophy,
@@ -28,11 +31,20 @@ import {
   IconUsers,
   IconExternalLink,
   IconTool,
+  IconUpload,
 } from '@tabler/icons-react'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useRealtime } from '../hooks/useRealtime'
 import { notifications } from '@mantine/notifications'
+import { ApiError } from '../lib/apiClient'
+import { HackathonService } from '../services/hackathonService'
+import type { Hackathon } from '../services/hackathonService'
+import { IdeaService } from '../services/ideaService'
+import { ProfileService } from '../services/profileService'
+import { StorageService } from '../services/storageService'
+import { TeamService } from '../services/teamService'
+import type { Team } from '../services/teamService'
 
 interface Project {
   id: string
@@ -56,7 +68,7 @@ interface Project {
   votes: number
   user_vote?: boolean
   prize_position?: number
-  status: 'submitted' | 'judging' | 'completed'
+  status: 'draft' | 'submitted' | 'in-progress' | 'completed'
   created_at: string
   submission_date: string
 }
@@ -68,79 +80,31 @@ interface ProjectFilters {
   prizeOnly: boolean
 }
 
-// Mock data - in real implementation, this would come from your service
-const mockProjects: Project[] = [
-  {
-    id: '1',
-    title: 'AI-Powered Code Review Assistant',
-    description: 'An intelligent tool that analyzes code quality, suggests improvements, and detects potential bugs using machine learning.',
-    team_name: 'Code Wizards',
-    team_members: [
-      { id: '1', name: 'Alice Johnson', avatar: '', role: 'Full Stack Developer' },
-      { id: '2', name: 'Bob Chen', avatar: '', role: 'AI Engineer' },
-      { id: '3', name: 'Carol Davis', avatar: '', role: 'UI/UX Designer' },
-    ],
-    hackathon_id: '1',
-    hackathon_name: 'AI Innovation Challenge 2025',
-    category: 'AI/ML',
-    technologies: ['Python', 'TensorFlow', 'React', 'Node.js'],
-    github_url: 'https://github.com/example/ai-code-review',
-    demo_url: 'https://demo.ai-code-review.com',
-    images: ['/api/placeholder/800/400'],
-    votes: 247,
-    user_vote: false,
-    prize_position: 1,
-    status: 'completed',
-    created_at: '2025-07-15T10:00:00Z',
-    submission_date: '2025-07-20T23:59:00Z',
-  },
-  {
-    id: '2',
-    title: 'EcoTrack - Carbon Footprint Calculator',
-    description: 'A comprehensive platform for tracking and reducing personal and corporate carbon footprints with gamification.',
-    team_name: 'Green Innovators',
-    team_members: [
-      { id: '4', name: 'David Wilson', avatar: '', role: 'Environmental Scientist' },
-      { id: '5', name: 'Eva Martinez', avatar: '', role: 'Frontend Developer' },
-    ],
-    hackathon_id: '2',
-    hackathon_name: 'Climate Tech Hackathon',
-    category: 'Sustainability',
-    technologies: ['Vue.js', 'Python', 'PostgreSQL', 'Chart.js'],
-    github_url: 'https://github.com/example/eco-track',
-    demo_url: 'https://ecotrack-demo.com',
-    images: ['/api/placeholder/800/400'],
-    votes: 189,
-    user_vote: true,
-    prize_position: 2,
-    status: 'completed',
-    created_at: '2025-07-10T10:00:00Z',
-    submission_date: '2025-07-18T23:59:00Z',
-  },
-  {
-    id: '3',
-    title: 'BlockChain Supply Chain Tracker',
-    description: 'Transparent supply chain management using blockchain technology to ensure product authenticity and ethical sourcing.',
-    team_name: 'Chain Masters',
-    team_members: [
-      { id: '6', name: 'Frank Zhang', avatar: '', role: 'Blockchain Developer' },
-      { id: '7', name: 'Grace Kim', avatar: '', role: 'Backend Developer' },
-      { id: '8', name: 'Henry Brown', avatar: '', role: 'Product Manager' },
-    ],
-    hackathon_id: '3',
-    hackathon_name: 'Blockchain Innovation Week',
-    category: 'Blockchain',
-    technologies: ['Solidity', 'Ethereum', 'React', 'Web3.js'],
-    github_url: 'https://github.com/example/supply-chain-tracker',
-    demo_url: 'https://supply-chain-demo.com',
-    images: ['/api/placeholder/800/400'],
-    votes: 156,
-    user_vote: false,
-    status: 'completed',
-    created_at: '2025-07-05T10:00:00Z',
-    submission_date: '2025-07-12T23:59:00Z',
-  },
-]
+interface ProjectUploadForm {
+  hackathonId: string
+  teamId: string
+  teamName: string
+  title: string
+  description: string
+  category: string
+  technologies: string
+  repositoryUrl: string
+  demoUrl: string
+}
+
+const CREATE_TEAM_VALUE = '__create_team__'
+
+const emptyUploadForm = (): ProjectUploadForm => ({
+  hackathonId: '',
+  teamId: '',
+  teamName: '',
+  title: '',
+  description: '',
+  category: '',
+  technologies: '',
+  repositoryUrl: '',
+  demoUrl: '',
+})
 
 export function ProjectShowcase() {
   const { user } = useAuthStore()
@@ -149,6 +113,12 @@ export function ProjectShowcase() {
   const [loading, setLoading] = useState(true)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [modalOpened, setModalOpened] = useState(false)
+  const [uploadOpened, setUploadOpened] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [hackathons, setHackathons] = useState<Hackathon[]>([])
+  const [userTeams, setUserTeams] = useState<Team[]>([])
+  const [projectImage, setProjectImage] = useState<File | null>(null)
+  const [uploadForm, setUploadForm] = useState<ProjectUploadForm>(emptyUploadForm)
   const [filters, setFilters] = useState<ProjectFilters>({
     search: '',
     category: '',
@@ -156,14 +126,77 @@ export function ProjectShowcase() {
     prizeOnly: false,
   })
 
-  useEffect(() => {
-    // Simulate API call
-    const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
       setLoading(true)
       try {
-        // In real implementation: const projects = await ProjectService.getProjects()
-        await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate network delay
-        setProjects(mockProjects)
+        const loadedHackathons = (await HackathonService.getHackathons(0, 100)).content
+        setHackathons(loadedHackathons)
+        setUploadForm((current) => current.hackathonId || loadedHackathons.length === 0
+          ? current
+          : { ...current, hackathonId: loadedHackathons[0].id })
+
+        const hackathonData = await Promise.all(loadedHackathons.map(async (hackathon) => {
+          const [ideasPage, teams] = await Promise.all([
+            IdeaService.getIdeas(hackathon.id, 0, 100),
+            TeamService.getTeams(hackathon.id),
+          ])
+
+          const teamsWithMembers = await Promise.all(teams.map(async (team) => ({
+            team,
+            members: await TeamService.getTeamMembers(team.id).catch(() => []),
+          })))
+          const membersByTeam = new Map(teamsWithMembers.map(({ team, members }) => [team.id, members]))
+
+          const projectList = await Promise.all(ideasPage.content.map(async (idea): Promise<Project> => {
+            const team = teams.find((candidate) => candidate.id === idea.teamId)
+            const members = team ? membersByTeam.get(team.id) ?? [] : []
+            const teamMembers = await Promise.all(members.map(async (member) => {
+              const profile = await ProfileService.getProfile(member.userId).catch(() => null)
+              return {
+                id: member.userId,
+                name: profile?.name ?? member.userId,
+                avatar: profile?.avatarUrl ?? undefined,
+                role: member.role,
+              }
+            }))
+            const screenshots = (idea.projectAttachments ?? [])
+              .filter((attachment) => attachment.type === 'screenshot')
+            const images = await Promise.all(screenshots.map(async (attachment) => {
+              if (!attachment.storageKey) return attachment.url
+              return StorageService.getPresignedUrl('project-attachments', attachment.storageKey)
+                .catch(() => attachment.url)
+            }))
+
+            return {
+              id: idea.id,
+              title: idea.title,
+              description: idea.description,
+              team_name: team?.name ?? 'Individual',
+              team_members: teamMembers,
+              hackathon_id: hackathon.id,
+              hackathon_name: hackathon.title,
+              category: idea.category,
+              technologies: idea.tags ?? [],
+              github_url: idea.repositoryUrl ?? undefined,
+              demo_url: idea.demoUrl ?? undefined,
+              images: [...images, ...(idea.attachments ?? [])].filter(Boolean),
+              votes: idea.votes ?? 0,
+              user_vote: idea.userHasVoted ?? false,
+              status: idea.status,
+              created_at: idea.createdAt,
+              submission_date: idea.updatedAt,
+            }
+          }))
+
+          return {
+            projectList,
+            userTeams: teamsWithMembers
+              .filter(({ members }) => members.some((member) => member.userId === user?.id))
+              .map(({ team }) => team),
+          }
+        }))
+        setProjects(hackathonData.flatMap(({ projectList }) => projectList))
+        setUserTeams(hackathonData.flatMap(({ userTeams: teams }) => teams))
       } catch (error) {
         console.error('Error loading projects:', error)
         notifications.show({
@@ -174,10 +207,103 @@ export function ProjectShowcase() {
       } finally {
         setLoading(false)
       }
+  }, [user?.id])
+
+  useEffect(() => {
+    void loadProjects()
+  }, [loadProjects])
+
+  const openUploadModal = () => {
+    const hackathonId = uploadForm.hackathonId || hackathons[0]?.id || ''
+    const firstTeam = userTeams.find((team) => team.hackathonId === hackathonId)
+    setUploadForm((current) => ({
+      ...current,
+      hackathonId,
+      teamId: current.teamId || firstTeam?.id || CREATE_TEAM_VALUE,
+    }))
+    setUploadOpened(true)
+  }
+
+  const handleProjectUpload = async () => {
+    const creatingTeam = uploadForm.teamId === CREATE_TEAM_VALUE
+    if (!uploadForm.hackathonId || !uploadForm.title.trim() || !uploadForm.description.trim()
+      || !uploadForm.category.trim() || !projectImage
+      || (creatingTeam ? !uploadForm.teamName.trim() : !uploadForm.teamId)) {
+      notifications.show({
+        title: 'Missing Information',
+        message: 'Complete all required fields and select a project image',
+        color: 'orange',
+      })
+      return
     }
 
-    loadProjects()
-  }, []) // mockProjects is now static outside component
+    setUploading(true)
+    try {
+      const technologies = uploadForm.technologies
+        .split(',')
+        .map((technology) => technology.trim())
+        .filter(Boolean)
+      const team = creatingTeam
+        ? await TeamService.createTeam({
+            name: uploadForm.teamName.trim(),
+            description: uploadForm.description.trim(),
+            hackathonId: uploadForm.hackathonId,
+            skills: technologies,
+          })
+        : userTeams.find((candidate) => candidate.id === uploadForm.teamId)
+
+      if (!team) throw new Error('Please select a team')
+
+      const uploadedImage = await StorageService.uploadFile(
+        projectImage,
+        'project-attachments',
+        `projects/${team.id}`
+      )
+      const idea = await IdeaService.createIdea({
+        title: uploadForm.title.trim(),
+        description: uploadForm.description.trim(),
+        hackathonId: uploadForm.hackathonId,
+        teamId: team.id,
+        category: uploadForm.category.trim(),
+        tags: technologies,
+      })
+      await IdeaService.updateIdea(idea.id, {
+        title: uploadForm.title.trim(),
+        description: uploadForm.description.trim(),
+        category: uploadForm.category.trim(),
+        tags: technologies,
+        status: 'submitted',
+        repositoryUrl: uploadForm.repositoryUrl.trim() || null,
+        demoUrl: uploadForm.demoUrl.trim() || null,
+        projectAttachments: [{
+          type: 'screenshot',
+          url: uploadedImage.url,
+          name: projectImage.name,
+          storageKey: uploadedImage.key,
+        }],
+      })
+
+      notifications.show({
+        title: 'Project Uploaded',
+        message: 'Your project is now visible in the showcase',
+        color: 'green',
+      })
+      setUploadOpened(false)
+      setProjectImage(null)
+      setUploadForm(emptyUploadForm())
+      await loadProjects()
+    } catch (error) {
+      notifications.show({
+        title: 'Upload failed',
+        message: error instanceof ApiError || error instanceof Error
+          ? error.message
+          : 'Unable to upload project',
+        color: 'red',
+      })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleVote = async (projectId: string) => {
     if (!user) {
@@ -190,29 +316,31 @@ export function ProjectShowcase() {
     }
 
     try {
-      // In real implementation: await ProjectService.voteProject(projectId)
+      const result = await IdeaService.voteIdea(projectId)
       setProjects(prev => prev.map(project => {
         if (project.id === projectId) {
-          const newVoteState = !project.user_vote
           return {
             ...project,
-            user_vote: newVoteState,
-            votes: newVoteState ? project.votes + 1 : project.votes - 1,
+            user_vote: result.voted,
+            votes: result.voteCount,
           }
         }
         return project
       }))
+      setSelectedProject((project) => project?.id === projectId
+        ? { ...project, user_vote: result.voted, votes: result.voteCount }
+        : project)
 
       notifications.show({
-        title: 'Vote Recorded',
-        message: 'Thank you for your vote!',
+        title: result.voted ? 'Vote Recorded' : 'Vote Removed',
+        message: result.voted ? 'Thank you for your vote!' : 'Your vote has been removed',
         color: 'green',
       })
     } catch (error) {
       console.error('Error voting:', error)
       notifications.show({
         title: 'Error',
-        message: 'Failed to record vote',
+        message: error instanceof ApiError ? error.message : 'Failed to record vote',
         color: 'red',
       })
     }
@@ -232,8 +360,14 @@ export function ProjectShowcase() {
     })
   }, [projects, filters])
 
-  const categories = ['AI/ML', 'Blockchain', 'IoT', 'FinTech', 'HealthTech', 'EdTech', 'Sustainability', 'Gaming']
-  const technologies = ['React', 'Vue.js', 'Python', 'Node.js', 'TensorFlow', 'Blockchain', 'IoT', 'Docker']
+  const categories = useMemo(
+    () => [...new Set(projects.map((project) => project.category).filter(Boolean))].sort(),
+    [projects]
+  )
+  const technologies = useMemo(
+    () => [...new Set(projects.flatMap((project) => project.technologies))].sort(),
+    [projects]
+  )
 
   const getPrizeIcon = (position?: number) => {
     if (!position) return null
@@ -278,8 +412,11 @@ export function ProjectShowcase() {
                 Discover amazing projects built during hackathons
               </Text>
             </div>
-            {/* Real-time connection indicator */}
-            {user && (
+            <Group gap="md">
+              <Button leftSection={<IconUpload size={16} />} onClick={openUploadModal}>
+                Upload Project
+              </Button>
+              {/* Real-time connection indicator */}
               <Group gap="xs">
                 <div 
                   style={{
@@ -294,22 +431,9 @@ export function ProjectShowcase() {
                   {isConnected ? 'Live' : 'Offline'}
                 </Text>
               </Group>
-            )}
+            </Group>
           </Group>
         </div>
-
-        {/* Under Construction Banner */}
-        <Alert
-          icon={<IconTool size={16} />}
-          title="Under Construction"
-          color="orange"
-          variant="light"
-        >
-          <Text size="sm">
-            🚧 This page is currently under development. Some features may not be fully functional yet. 
-            We're working hard to bring you an amazing project showcase experience!
-          </Text>
-        </Alert>
 
         {/* Filters */}
         <Card withBorder>
@@ -385,10 +509,19 @@ export function ProjectShowcase() {
                     </ActionIcon>
                   </Group>
 
-                  {/* Image Placeholder */}
-                  <div style={{ height: 160, backgroundColor: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text c="dimmed" size="sm">Project Screenshot</Text>
-                  </div>
+                  {project.images[0] ? (
+                    <Image
+                      src={project.images[0]}
+                      alt={`${project.title} screenshot`}
+                      h={160}
+                      radius="md"
+                      fit="cover"
+                    />
+                  ) : (
+                    <div style={{ height: 160, backgroundColor: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text c="dimmed" size="sm">Project Screenshot</Text>
+                    </div>
+                  )}
 
                   {/* Description */}
                   <Text size="sm" c="dimmed" lineClamp={3}>
@@ -426,12 +559,28 @@ export function ProjectShowcase() {
                     </Group>
                     <Group gap="xs">
                       {project.github_url && (
-                        <ActionIcon variant="light" size="sm" onClick={(e) => e.stopPropagation()}>
+                        <ActionIcon
+                          component="a"
+                          href={project.github_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="light"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <IconBrandGithub size={14} />
                         </ActionIcon>
                       )}
                       {project.demo_url && (
-                        <ActionIcon variant="light" size="sm" onClick={(e) => e.stopPropagation()}>
+                        <ActionIcon
+                          component="a"
+                          href={project.demo_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="light"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <IconWorldWww size={14} />
                         </ActionIcon>
                       )}
@@ -448,6 +597,9 @@ export function ProjectShowcase() {
                     <IconTrophy size={30} />
                   </ThemeIcon>
                   <Text c="dimmed">No projects found matching your filters</Text>
+                  <Button leftSection={<IconUpload size={16} />} onClick={openUploadModal}>
+                    Upload Project
+                  </Button>
                 </Stack>
               </Center>
             </div>
@@ -463,10 +615,19 @@ export function ProjectShowcase() {
         >
         {selectedProject && (
           <Stack gap="md">
-            {/* Project Image */}
-            <div style={{ height: 300, backgroundColor: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Text c="dimmed">Project Screenshot/Demo</Text>
-            </div>
+            {selectedProject.images[0] ? (
+              <Image
+                src={selectedProject.images[0]}
+                alt={`${selectedProject.title} screenshot`}
+                h={300}
+                radius="md"
+                fit="contain"
+              />
+            ) : (
+              <div style={{ height: 300, backgroundColor: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Text c="dimmed">Project Screenshot/Demo</Text>
+              </div>
+            )}
 
             {/* Description */}
             <Text>{selectedProject.description}</Text>
@@ -537,6 +698,123 @@ export function ProjectShowcase() {
             </Button>
           </Stack>
         )}
+      </Modal>
+
+      <Modal
+        opened={uploadOpened}
+        onClose={() => !uploading && setUploadOpened(false)}
+        title="Upload a Project"
+        size="lg"
+        closeOnClickOutside={!uploading}
+        closeOnEscape={!uploading}
+      >
+        <Stack gap="md">
+          {hackathons.length === 0 ? (
+            <Alert color="orange">No hackathons are currently available for project uploads.</Alert>
+          ) : (
+            <>
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <Select
+                  label="Hackathon"
+                  required
+                  data={hackathons.map((hackathon) => ({ value: hackathon.id, label: hackathon.title }))}
+                  value={uploadForm.hackathonId}
+                  onChange={(hackathonId) => {
+                    const nextHackathonId = hackathonId ?? ''
+                    const firstTeam = userTeams.find((team) => team.hackathonId === nextHackathonId)
+                    setUploadForm((current) => ({
+                      ...current,
+                      hackathonId: nextHackathonId,
+                      teamId: firstTeam?.id || CREATE_TEAM_VALUE,
+                    }))
+                  }}
+                />
+                <Select
+                  label="Team"
+                  required
+                  data={[
+                    ...userTeams
+                      .filter((team) => team.hackathonId === uploadForm.hackathonId)
+                      .map((team) => ({ value: team.id, label: team.name })),
+                    { value: CREATE_TEAM_VALUE, label: 'Create a new team' },
+                  ]}
+                  value={uploadForm.teamId}
+                  onChange={(teamId) => setUploadForm((current) => ({ ...current, teamId: teamId ?? '' }))}
+                />
+              </SimpleGrid>
+
+              {uploadForm.teamId === CREATE_TEAM_VALUE && (
+                <TextInput
+                  label="New Team Name"
+                  required
+                  value={uploadForm.teamName}
+                  onChange={(event) => setUploadForm((current) => ({ ...current, teamName: event.target.value }))}
+                />
+              )}
+
+              <TextInput
+                label="Project Title"
+                required
+                value={uploadForm.title}
+                onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
+              />
+              <Textarea
+                label="Project Description"
+                required
+                minRows={3}
+                value={uploadForm.description}
+                onChange={(event) => setUploadForm((current) => ({ ...current, description: event.target.value }))}
+              />
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <TextInput
+                  label="Category"
+                  required
+                  placeholder="e.g. Artificial Intelligence"
+                  value={uploadForm.category}
+                  onChange={(event) => setUploadForm((current) => ({ ...current, category: event.target.value }))}
+                />
+                <TextInput
+                  label="Technologies"
+                  placeholder="React, Python, PostgreSQL"
+                  value={uploadForm.technologies}
+                  onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
+                />
+              </SimpleGrid>
+              <FileInput
+                label="Project Image"
+                description="PNG, JPG, GIF, WebP or SVG"
+                required
+                accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                leftSection={<IconUpload size={16} />}
+                value={projectImage}
+                onChange={setProjectImage}
+                clearable
+              />
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <TextInput
+                  label="Repository URL"
+                  placeholder="https://github.com/..."
+                  value={uploadForm.repositoryUrl}
+                  onChange={(event) => setUploadForm((current) => ({ ...current, repositoryUrl: event.target.value }))}
+                />
+                <TextInput
+                  label="Demo URL"
+                  placeholder="https://..."
+                  value={uploadForm.demoUrl}
+                  onChange={(event) => setUploadForm((current) => ({ ...current, demoUrl: event.target.value }))}
+                />
+              </SimpleGrid>
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setUploadOpened(false)} disabled={uploading}>
+                  Cancel
+                </Button>
+                <Button leftSection={<IconUpload size={16} />} onClick={handleProjectUpload} loading={uploading}>
+                  Upload Project
+                </Button>
+              </Group>
+            </>
+          )}
+        </Stack>
       </Modal>
       </Stack>
       )}

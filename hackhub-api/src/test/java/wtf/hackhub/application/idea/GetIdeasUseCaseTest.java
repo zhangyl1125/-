@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import wtf.hackhub.domain.Idea;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaRepository;
+import wtf.hackhub.infrastructure.persistence.idea.IdeaVoteRepository;
 
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,8 @@ class GetIdeasUseCaseTest {
 
 	@Mock
 	IdeaRepository ideaRepository;
+	@Mock
+	IdeaVoteRepository voteRepository;
 	@InjectMocks
 	GetIdeasUseCase useCase;
 

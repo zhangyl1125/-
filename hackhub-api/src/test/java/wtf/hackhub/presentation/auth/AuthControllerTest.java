@@ -32,7 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
 		"app.jwt.private-key=-----BEGIN PRIVATE KEY-----\\nMIIEvAIBADANBg=====\\n-----END PRIVATE KEY-----",
 		"app.jwt.public-key=-----BEGIN PUBLIC KEY-----\\nMIIBIjANBg=====\\n-----END PUBLIC KEY-----",
-		"app.cors.allowed-origins=http://localhost:5173", "app.minio.endpoint=http://localhost:9000",
+		"app.auth.cookie-secure=false", "app.cors.allowed-origins=http://localhost:5173",
+		"app.minio.endpoint=http://localhost:9000",
 		"app.minio.access-key=test", "app.minio.secret-key=test"})
 class AuthControllerTest {
 
@@ -94,7 +95,8 @@ class AuthControllerTest {
 
 		mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"a@b.com\",\"password\":\"secret\"}")).andExpect(status().isOk())
-				.andExpect(jsonPath("$.accessToken").value("access.tok")).andExpect(cookie().exists("refresh_token"));
+				.andExpect(jsonPath("$.accessToken").value("access.tok")).andExpect(cookie().exists("refresh_token"))
+				.andExpect(cookie().secure("refresh_token", false));
 	}
 
 	@Test

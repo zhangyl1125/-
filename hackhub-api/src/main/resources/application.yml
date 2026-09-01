@@ -61,6 +61,10 @@ management:
       show-details: when_authorized
 
 app:
+  auth:
+    # Keep enabled for HTTPS deployments. HTTP-only local/internal Compose sets this to false.
+    cookie-secure: ${APP_AUTH_COOKIE_SECURE:true}
+
   jwt:
     private-key: ${JWT_PRIVATE_KEY}
     public-key: ${JWT_PUBLIC_KEY}
