@@ -8,6 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import wtf.hackhub.application.admin.AdminCreateUserUseCase;
+import wtf.hackhub.application.admin.DeleteUserUseCase;
 import wtf.hackhub.application.admin.UpdateUserRoleUseCase;
 import wtf.hackhub.application.auth.LoginUseCase;
 import wtf.hackhub.application.auth.RefreshTokenUseCase;
@@ -232,7 +233,7 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler({JoinTeamUseCase.TeamNotFoundException.class, UpdateProfileUseCase.ProfileNotFoundException.class,
-			UpdateUserRoleUseCase.UserNotFoundException.class})
+			UpdateUserRoleUseCase.UserNotFoundException.class, DeleteUserUseCase.UserNotFoundException.class})
 	public ProblemDetail handleGenericNotFound(RuntimeException ex) {
 		ProblemDetail p = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
 		p.setType(URI.create("/errors/not-found"));

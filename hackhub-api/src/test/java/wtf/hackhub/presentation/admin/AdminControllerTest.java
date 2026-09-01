@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import wtf.hackhub.application.admin.AdminCreateUserUseCase;
+import wtf.hackhub.application.admin.DeleteUserUseCase;
 import wtf.hackhub.application.admin.ListUsersUseCase;
 import wtf.hackhub.application.admin.UpdateUserRoleUseCase;
 import wtf.hackhub.domain.Organization;
@@ -30,6 +31,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -52,6 +54,8 @@ class AdminControllerTest {
 	ListUsersUseCase listUsersUseCase;
 	@MockBean
 	UpdateUserRoleUseCase updateUserRoleUseCase;
+	@MockBean
+	DeleteUserUseCase deleteUserUseCase;
 	@MockBean
 	OrganizationRepository organizationRepository;
 	@MockBean
@@ -95,6 +99,21 @@ class AdminControllerTest {
 		mvc.perform(patch("/api/v1/admin/users/" + targetId + "/role").with(MockAuthHelper.asAdmin(ADMIN_ID))
 				.contentType(MediaType.APPLICATION_JSON).content("{\"role\":\"superuser\"}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void delete_user_returns_204() throws Exception {
+		UUID targetId = UUID.randomUUID();
+
+		mvc.perform(delete("/api/v1/admin/users/" + targetId).with(MockAuthHelper.asAdmin(ADMIN_ID)))
+				.andExpect(status().isNoContent());
+
+		verify(deleteUserUseCase).execute(targetId, ADMIN_ID);
+	}
+
+	@Test
+	void delete_user_unauthenticated_returns_401() throws Exception {
+		mvc.perform(delete("/api/v1/admin/users/" + UUID.randomUUID())).andExpect(status().isUnauthorized());
 	}
 
 	@Test

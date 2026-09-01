@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import wtf.hackhub.application.admin.AdminCreateUserUseCase;
+import wtf.hackhub.application.admin.DeleteUserUseCase;
 import wtf.hackhub.application.admin.ListUsersUseCase;
 import wtf.hackhub.application.admin.UpdateUserRoleUseCase;
 import wtf.hackhub.domain.Organization;
@@ -38,16 +39,19 @@ public class AdminController {
 	private final ListUsersUseCase listUsersUseCase;
 	private final UpdateUserRoleUseCase updateUserRoleUseCase;
 	private final AdminCreateUserUseCase adminCreateUserUseCase;
+	private final DeleteUserUseCase deleteUserUseCase;
 	private final OrganizationRepository organizationRepository;
 	private final OrganizationMemberRepository memberRepository;
 	private final HackathonRepository hackathonRepository;
 
 	public AdminController(ListUsersUseCase listUsersUseCase, UpdateUserRoleUseCase updateUserRoleUseCase,
-			AdminCreateUserUseCase adminCreateUserUseCase, OrganizationRepository organizationRepository,
-			OrganizationMemberRepository memberRepository, HackathonRepository hackathonRepository) {
+			AdminCreateUserUseCase adminCreateUserUseCase, DeleteUserUseCase deleteUserUseCase,
+			OrganizationRepository organizationRepository, OrganizationMemberRepository memberRepository,
+			HackathonRepository hackathonRepository) {
 		this.listUsersUseCase = listUsersUseCase;
 		this.updateUserRoleUseCase = updateUserRoleUseCase;
 		this.adminCreateUserUseCase = adminCreateUserUseCase;
+		this.deleteUserUseCase = deleteUserUseCase;
 		this.organizationRepository = organizationRepository;
 		this.memberRepository = memberRepository;
 		this.hackathonRepository = hackathonRepository;
@@ -90,6 +94,17 @@ public class AdminController {
 	public UserSummary updateRole(@PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
 		Profile updated = updateUserRoleUseCase.execute(id, Profile.Role.fromDbValue(request.role()));
 		return UserSummary.from(updated);
+	}
+
+	@Operation(summary = "Delete a platform user")
+	@ApiResponses({@ApiResponse(responseCode = "204", description = "User deleted"),
+			@ApiResponse(responseCode = "401", description = "Not authenticated"),
+			@ApiResponse(responseCode = "403", description = "Cannot delete own account"),
+			@ApiResponse(responseCode = "404", description = "User not found")})
+	@DeleteMapping("/users/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteUser(@PathVariable UUID id, @AuthenticationPrincipal UUID callerId) {
+		deleteUserUseCase.execute(id, callerId);
 	}
 
 	@Operation(summary = "List all organizations")
