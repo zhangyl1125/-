@@ -56,7 +56,7 @@ describe('StorageService', () => {
       const result = await StorageService.uploadFile(file, 'avatars', 'avatars/u-1')
 
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/storage/upload/avatars'),
+        '/api/v1/storage/upload/avatars',
         expect.objectContaining({ method: 'POST' })
       )
       expect(result.url).toBe('https://minio/file.jpg')

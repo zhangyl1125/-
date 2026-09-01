@@ -151,7 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
 async function tryRefreshSilently(): Promise<boolean> {
   try {
-    const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+    const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
     const res = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
       method: 'POST',
       credentials: 'include',

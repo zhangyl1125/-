@@ -46,7 +46,7 @@ export const state: TestState | null = loadState()
 // Stable test accounts (created by test-up.sh). All share the password "Password123".
 // Falls back to seeded demo accounts when state file doesn't exist.
 const DEMO_USERS = {
-  admin:   { email: 'admin@hackhub.wtf',   password: 'Admin1234!',   role: 'admin'       },
+  admin:   { email: 'aah5sgh@bosch.com',  password: 'aah5sgh@bosch.com', role: 'admin'   },
   manager: { email: 'manager@hackhub.wtf', password: 'Manager1234!', role: 'manager'     },
   alice:   { email: 'alice@example.com',   password: 'Alice1234!',   role: 'participant' },
   bob:     { email: 'bob@example.com',     password: 'Bob12345!',    role: 'participant' },

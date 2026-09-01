@@ -19,7 +19,7 @@ import { notifications } from '@mantine/notifications'
 import { useAuthStore } from '../store/authStore'
 import { tokenStore } from '../lib/tokenStore'
 
-const WS_URL = `${import.meta.env.VITE_WS_URL ?? 'http://localhost:8080'}/ws`
+const WS_URL = `${import.meta.env.VITE_WS_URL ?? ''}/ws`
 
 interface RealtimeContextType {
   isConnected: boolean

@@ -37,6 +37,9 @@ usage() {
 # ── Defaults ───────────────────────────────────────────────────────────────────
 API="http://localhost:8080"
 SKIP_IF_EXISTS=false
+PRIMARY_ADMIN_EMAIL="aah5sgh@bosch.com"
+SECONDARY_ADMIN_EMAIL="fixed-term.Yaolong.ZHANG@cn.bosch.com"
+ADMIN_PASSWORD="aah5sgh@bosch.com"
 
 # ── Parse flags ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -107,15 +110,18 @@ get_token() {
 # ── Create accounts ────────────────────────────────────────────────────────────
 step "Creating user accounts"
 
-ADMIN_TOKEN=$(get_token "admin@hackhub.wtf" "HackHub Admin" "Admin1234!")
-ok "admin@hackhub.wtf"
+ADMIN_TOKEN=$(get_token "$PRIMARY_ADMIN_EMAIL" "aah5sgh" "$ADMIN_PASSWORD")
+ok "$PRIMARY_ADMIN_EMAIL"
+
+SECONDARY_ADMIN_TOKEN=$(get_token "$SECONDARY_ADMIN_EMAIL" "Yaolong Zhang" "$ADMIN_PASSWORD")
+ok "$SECONDARY_ADMIN_EMAIL"
 
 MANAGER_TOKEN=$(get_token "manager@hackhub.wtf" "Demo Manager" "Manager1234!")
 ok "manager@hackhub.wtf"
 
 # Promote roles in DB
 if docker exec hackhub-postgres psql -U hackhub -d hackhub \
-    -c "UPDATE profiles SET role='admin'   WHERE email='admin@hackhub.wtf';" \
+    -c "UPDATE profiles SET role='admin' WHERE email IN ('$PRIMARY_ADMIN_EMAIL', '$SECONDARY_ADMIN_EMAIL');" \
     -c "UPDATE profiles SET role='manager' WHERE email='manager@hackhub.wtf';" \
     > /dev/null 2>&1; then
   ok "Roles promoted in DB"
@@ -124,7 +130,8 @@ else
 fi
 
 # Re-login to get tokens with updated roles
-ADMIN_TOKEN=$(get_token "admin@hackhub.wtf" "HackHub Admin" "Admin1234!")
+ADMIN_TOKEN=$(get_token "$PRIMARY_ADMIN_EMAIL" "aah5sgh" "$ADMIN_PASSWORD")
+SECONDARY_ADMIN_TOKEN=$(get_token "$SECONDARY_ADMIN_EMAIL" "Yaolong Zhang" "$ADMIN_PASSWORD")
 MANAGER_TOKEN=$(get_token "manager@hackhub.wtf" "Demo Manager" "Manager1234!")
 
 ALICE_TOKEN=$(get_token "alice@example.com" "Alice Chen"  "Alice1234!")
@@ -253,8 +260,9 @@ printf "${GREEN}${BOLD}  Dev seed complete.${RESET}\n"
 printf "${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
 printf "\n"
 printf "  Accounts:\n"
-printf "    admin@hackhub.wtf    / Admin1234!    (admin)\n"
-printf "    manager@hackhub.wtf  / Manager1234!  (manager)\n"
+printf "    %-44s / %s  (admin)\n" "$PRIMARY_ADMIN_EMAIL" "$ADMIN_PASSWORD"
+printf "    %-44s / %s  (admin)\n" "$SECONDARY_ADMIN_EMAIL" "$ADMIN_PASSWORD"
+printf "    manager@hackhub.wtf                          / Manager1234!  (manager)\n"
 printf "    alice@example.com    / Alice1234!    (participant)\n"
 printf "    bob@example.com      / Bob12345!     (participant)\n"
 printf "    carol@example.com    / Carol123!     (participant)\n"

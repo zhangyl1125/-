@@ -28,6 +28,7 @@ describe('api client', () => {
 
     const result = await api.get<{ id: string; name: string }>('/api/v1/test')
     expect(result.name).toBe('test')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/test', expect.any(Object))
   })
 
   it('attaches Bearer token from tokenStore', async () => {

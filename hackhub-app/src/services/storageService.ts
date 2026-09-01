@@ -22,7 +22,7 @@ export class StorageService {
     form.append('file', file)
     form.append('prefix', prefix)
 
-    const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+    const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
     const { tokenStore } = await import('../lib/tokenStore')
 
     const res = await fetch(`${BASE_URL}/api/v1/storage/upload/${bucket}`, {

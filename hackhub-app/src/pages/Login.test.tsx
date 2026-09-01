@@ -78,15 +78,15 @@ describe('Login', () => {
     renderLogin()
 
     fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: 'admin@hackhub.wtf' },
+      target: { value: 'aah5sgh@bosch.com' },
     })
     fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'Admin1234!' },
+      target: { value: 'aah5sgh@bosch.com' },
     })
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith('admin@hackhub.wtf', 'Admin1234!')
+      expect(mockLogin).toHaveBeenCalledWith('aah5sgh@bosch.com', 'aah5sgh@bosch.com')
     })
   })
 
@@ -95,10 +95,10 @@ describe('Login', () => {
     renderLogin()
 
     fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: 'admin@hackhub.wtf' },
+      target: { value: 'aah5sgh@bosch.com' },
     })
     fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'Admin1234!' },
+      target: { value: 'aah5sgh@bosch.com' },
     })
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 

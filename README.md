@@ -85,7 +85,8 @@ Demo accounts (created by `make seed --demo`):
 
 | Email | Password | Role |
 |---|---|---|
-| admin@hackhub.wtf | Admin1234! | Platform admin |
+| aah5sgh@bosch.com | aah5sgh@bosch.com | Platform admin |
+| fixed-term.Yaolong.ZHANG@cn.bosch.com | aah5sgh@bosch.com | Platform admin |
 | manager@hackhub.wtf | Manager1234! | Org manager |
 | alice@example.com | Alice1234! | Participant |
 | bob@example.com | Bob12345! | Participant |
