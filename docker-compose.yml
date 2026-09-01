@@ -1,3 +1,14 @@
+# Build arguments are separate from the runtime environment. DOCKER_BUILD_*
+# override the conventional proxy variables when a Docker-reachable endpoint
+# is needed.
+x-build-proxy-args: &build-proxy-args
+  HTTP_PROXY: ${DOCKER_BUILD_HTTP_PROXY:-${HTTP_PROXY:-}}
+  HTTPS_PROXY: ${DOCKER_BUILD_HTTPS_PROXY:-${HTTPS_PROXY:-}}
+  NO_PROXY: ${DOCKER_BUILD_NO_PROXY:-${NO_PROXY:-}}
+
+x-build-secrets: &build-secrets
+  - corporate-ca
+
 services:
 
   postgres:
@@ -56,6 +67,10 @@ services:
     build:
       context: ./hackhub-api
       dockerfile: Dockerfile
+      args: *build-proxy-args
+      secrets: *build-secrets
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
     container_name: hackhub-api
     restart: unless-stopped
     depends_on:
@@ -89,6 +104,10 @@ services:
     build:
       context: ./hackhub-app
       dockerfile: Dockerfile
+      args: *build-proxy-args
+      secrets: *build-secrets
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
     container_name: hackhub-app
     restart: unless-stopped
     depends_on:
@@ -117,3 +136,9 @@ services:
 volumes:
   postgres_data:
   minio_data:
+
+# /dev/null keeps the secret optional for normal public-network builds. Set
+# CORPORATE_CA_FILE to a PEM CA file when the proxy performs TLS inspection.
+secrets:
+  corporate-ca:
+    file: ${CORPORATE_CA_FILE:-/dev/null}

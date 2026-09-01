@@ -31,6 +31,28 @@ docker compose up -d
 open http://localhost
 ```
 
+### Enterprise proxy for Docker builds (optional)
+
+Docker build steps do not inherit the host proxy automatically. Compose uses
+`HTTP_PROXY`/`HTTPS_PROXY` when present; `DOCKER_BUILD_*` overrides them when a
+Docker-reachable endpoint is needed. If Maven or npm must go through an
+enterprise proxy, provide the endpoint and the CA certificate used for TLS
+inspection:
+
+```bash
+export DOCKER_BUILD_HTTP_PROXY=http://host.docker.internal:3128
+export DOCKER_BUILD_HTTPS_PROXY=http://host.docker.internal:3128
+export DOCKER_BUILD_NO_PROXY=localhost,127.0.0.1
+export CORPORATE_CA_FILE=/absolute/path/to/enterprise-proxy-ca.crt
+
+docker compose build
+```
+
+Compose exposes `host.docker.internal` to the build container, translates a
+host-loopback proxy URL for the build, and mounts the CA only during the build.
+The certificate is not stored in the repository or copied into the runtime
+images. Leave these variables unset for a direct public-network build.
+
 ## Manual Dev Mode (hot reload)
 
 Requires Postgres + MinIO running:
