@@ -13,51 +13,23 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useHackathonStore } from '../../store/hackathonStore'
 import { PermissionService } from '../../utils/permissions'
-
-const navigationItems = [
-  {
-    label: 'Dashboard',
-    icon: IconDashboard,
-    path: '/',
-    description: 'Overview and analytics',
-  },
-  {
-    label: 'Organizations',
-    icon: IconBuilding,
-    path: '/organizations',
-    description: 'Your org memberships',
-  },
-  {
-    label: 'Hackathons',
-    icon: IconTrophy,
-    path: '/hackathons',
-    description: 'Browse and manage events',
-  },
-  {
-    label: 'Teams',
-    icon: IconUsers,
-    path: '/teams',
-    description: 'Join or create teams',
-  },
-  {
-    label: 'Projects',
-    icon: IconPresentation,
-    path: '/projects',
-    description: 'Showcase and discover projects',
-  },
-  {
-    label: 'Profile',
-    icon: IconUser,
-    path: '/profile',
-    description: 'Manage your account',
-  },
-]
+import { useLanguage } from '../../contexts/LanguageContext'
 
 export function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { hackathons } = useHackathonStore()
+  const { t } = useLanguage()
+
+  const navigationItems = [
+    { label: t('sidebar.dashboard'), icon: IconDashboard, path: '/', description: t('sidebar.dashboardDescription') },
+    { label: t('sidebar.organizations'), icon: IconBuilding, path: '/organizations', description: t('sidebar.organizationsDescription') },
+    { label: t('sidebar.hackathons'), icon: IconTrophy, path: '/hackathons', description: t('sidebar.hackathonsDescription') },
+    { label: t('sidebar.teams'), icon: IconUsers, path: '/teams', description: t('sidebar.teamsDescription') },
+    { label: t('sidebar.projects'), icon: IconPresentation, path: '/projects', description: t('sidebar.projectsDescription') },
+    { label: t('sidebar.profile'), icon: IconUser, path: '/profile', description: t('sidebar.profileDescription') },
+  ]
 
   const isManager = user?.role === 'manager'
   const isAdmin = user && PermissionService.canManageUsers(user)
@@ -66,7 +38,7 @@ export function Sidebar() {
   return (
     <Stack gap="xs">
       <Text size="xs" fw={500} c="dimmed" tt="uppercase" mb="sm">
-        Navigation
+        {t('sidebar.navigation')}
       </Text>
 
       {navigationItems.map((item) => (
@@ -97,13 +69,13 @@ export function Sidebar() {
       {(isAdmin || isManager) && (
         <>
           <Text size="xs" fw={500} c="dimmed" tt="uppercase" mt="lg" mb="sm">
-            {isAdmin ? 'Admin Panel' : 'Management'}
+            {isAdmin ? t('sidebar.adminPanel') : t('sidebar.management')}
           </Text>
           
           {isManager && !isAdmin && (
             <NavLink
-              label="Create Hackathon"
-              description="Start a new event"
+              label={t('sidebar.createHackathon')}
+              description={t('sidebar.createHackathonDescription')}
               leftSection={
                 <ThemeIcon variant="light" size="sm" color="blue">
                   <IconPlus size={16} />
@@ -115,8 +87,8 @@ export function Sidebar() {
           )}
           
           <NavLink
-            label={isAdmin ? 'Manage Users' : 'Manage Members'}
-            description={isAdmin ? 'Create and manage user accounts' : 'View and manage org members'}
+            label={isAdmin ? t('sidebar.manageUsers') : t('sidebar.manageMembers')}
+            description={isAdmin ? t('sidebar.manageUsersDescription') : t('sidebar.manageMembersDescription')}
             leftSection={
               <ThemeIcon variant="light" size="sm" color={isAdmin ? 'red' : 'blue'}>
                 <IconShield size={16} />
@@ -129,8 +101,8 @@ export function Sidebar() {
           
           {isAdmin && (
             <NavLink
-              label="Manage Organizations"
-              description="View and manage all organizations"
+              label={t('sidebar.manageOrganizations')}
+              description={t('sidebar.manageOrganizationsDescription')}
               leftSection={
                 <ThemeIcon variant="light" size="sm" color="purple">
                   <IconBuilding size={16} />
@@ -145,7 +117,7 @@ export function Sidebar() {
       )}
 
       <Text size="xs" c="dimmed" mt="auto" pt="lg">
-        Welcome, {user?.name}
+        {t('sidebar.welcome', { name: user?.name ?? '' })}
       </Text>
     </Stack>
   )

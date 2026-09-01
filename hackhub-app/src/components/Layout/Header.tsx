@@ -24,6 +24,7 @@ import { useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { NotificationCenter } from '../NotificationCenter'
+import { useLanguage } from '../../contexts/LanguageContext'
 
 interface HeaderProps {
   opened: boolean
@@ -35,6 +36,15 @@ export function Header({ opened, toggle }: HeaderProps) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const { language, toggleLanguage, t } = useLanguage()
+
+  const roleLabel = !user
+    ? ''
+    : user.role === 'admin'
+    ? t('dashboard.administrator')
+    : user.role === 'manager'
+      ? t('dashboard.manager')
+      : t('dashboard.participant')
 
   const handleLogout = async () => {
     try {
@@ -62,6 +72,15 @@ export function Header({ opened, toggle }: HeaderProps) {
       </Group>
 
       <Group>
+        <UnstyledButton
+          onClick={toggleLanguage}
+          aria-label={language === 'zh' ? '切换到英文' : 'Switch to Chinese'}
+        >
+          <Text size="sm" fw={500} c="blue">
+            {language === 'zh' ? '中' : 'EN'}
+          </Text>
+        </UnstyledButton>
+
         {/* Notifications */}
         <Indicator 
           disabled={false} 
@@ -105,7 +124,7 @@ export function Header({ opened, toggle }: HeaderProps) {
                     {user?.name}
                   </Text>
                   <Text c="dimmed" size="xs">
-                    {user?.role}
+                    {roleLabel}
                   </Text>
                 </div>
               </Group>
@@ -113,18 +132,18 @@ export function Header({ opened, toggle }: HeaderProps) {
           </Menu.Target>
 
           <Menu.Dropdown>
-            <Menu.Label>Account</Menu.Label>
+            <Menu.Label>{t('header.account')}</Menu.Label>
             <Menu.Item
               leftSection={<IconUser style={{ width: rem(14), height: rem(14) }} />}
               onClick={() => navigate('/profile')}
             >
-              Profile
+              {t('header.profile')}
             </Menu.Item>
             <Menu.Item
               leftSection={<IconSettings style={{ width: rem(14), height: rem(14) }} />}
               onClick={() => navigate('/profile')}
             >
-              Settings
+              {t('header.settings')}
             </Menu.Item>
 
             <Menu.Divider />
@@ -134,7 +153,7 @@ export function Header({ opened, toggle }: HeaderProps) {
               leftSection={<IconLogout style={{ width: rem(14), height: rem(14) }} />}
               onClick={handleLogout}
             >
-              Logout
+              {t('header.logout')}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>

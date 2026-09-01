@@ -40,6 +40,7 @@ import { Link } from 'react-router-dom'
 import { PermissionService } from '../utils/permissions'
 import { OrganizationService } from '../services/organizationService'
 import type { Notification as ApiNotification } from '../services/notificationService'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface DashboardStats {
   totalHackathons: number
@@ -54,6 +55,7 @@ interface DashboardStats {
 export function Dashboard() {
   const { user } = useAuthStore()
   const { fetchHackathons } = useHackathonStore()
+  const { language, t } = useLanguage()
   const [stats, setStats] = useState<DashboardStats>({
     totalHackathons: 0,
     activeHackathons: 0,
@@ -240,34 +242,52 @@ export function Dashboard() {
     }
   }
 
+  const getRoleDisplayName = () => {
+    if (!user) return t('dashboard.unknownRole')
+    if (user.role === 'admin') return t('dashboard.administrator')
+    if (user.role === 'manager') return t('dashboard.manager')
+    return t('dashboard.participant')
+  }
+
+  const getStatusLabel = (status: string) => {
+    const statusLabels: Record<string, string> = {
+      active: t('status.active'),
+      running: t('status.running'),
+      open: t('status.open'),
+      upcoming: t('status.upcoming'),
+      completed: t('status.completed'),
+    }
+    return statusLabels[status] ?? status
+  }
+
   const statCards = [
     {
-      title: 'Active Hackathons',
+      title: t('dashboard.activeHackathons'),
       value: stats.activeHackathons,
       icon: IconTrophy,
       color: 'green',
-      description: 'Currently running'
+      description: t('dashboard.currentlyRunning')
     },
     {
-      title: 'Total Hackathons',
+      title: t('dashboard.totalHackathons'),
       value: stats.totalHackathons,
       icon: IconCalendar,
       color: 'blue',
-      description: 'All time'
+      description: t('dashboard.allTime')
     },
     {
-      title: user ? 'My Teams' : 'Total Teams',
+      title: user ? t('dashboard.myTeams') : t('dashboard.totalTeams'),
       value: user ? stats.myTeams : stats.totalTeams,
       icon: IconUsers,
       color: 'purple',
-      description: user ? "Teams I'm in" : 'Across all hackathons'
+      description: user ? t('dashboard.teamsImIn') : t('dashboard.acrossAllHackathons')
     },
     {
-      title: user ? 'My Ideas' : 'Total Ideas',
+      title: user ? t('dashboard.myIdeas') : t('dashboard.totalIdeas'),
       value: user ? stats.myIdeas : stats.totalIdeas,
       icon: IconBulb,
       color: 'orange',
-      description: user ? "Ideas I've submitted" : 'Across all hackathons'
+      description: user ? t('dashboard.ideasSubmitted') : t('dashboard.acrossAllHackathons')
     }
   ]
 
@@ -279,12 +299,14 @@ export function Dashboard() {
           <Group justify="space-between" align="flex-start">
             <div>
               <Title order={1} mb="xs">
-                Welcome back{user ? `, ${user.name}` : ''}!
+                {user
+                  ? t('dashboard.welcomeBackWithName', { name: user.name })
+                  : t('dashboard.welcomeBack')}
               </Title>
               <Text c="dimmed" size="lg">
                 {user
-                  ? "Here's what's happening in your hackathon community"
-                  : 'Discover amazing hackathons and join the community'}
+                  ? t('dashboard.communitySummary')
+                  : t('dashboard.discoverSummary')}
               </Text>
               {user && (
                 <Group gap="xs" mt="xs">
@@ -292,16 +314,16 @@ export function Dashboard() {
                     color={PermissionService.getRoleColor(user.role)}
                     variant="light"
                   >
-                    {PermissionService.getRoleDisplayName(user.role)}
+                    {getRoleDisplayName()}
                   </Badge>
                   {user.role === 'admin' && (
                     <Badge color="purple" variant="light">
-                      All Access
+                      {t('dashboard.allAccess')}
                     </Badge>
                   )}
                   {user.role === 'manager' && PermissionService.canCreateHackathons(user) && (
                     <Badge color="blue" variant="light">
-                      Event Organizer
+                      {t('dashboard.eventOrganizer')}
                     </Badge>
                   )}
                 </Group>
@@ -317,7 +339,7 @@ export function Dashboard() {
               <Group justify="space-between">
                 <Group>
                   <IconBell size={19} />
-                  <Title order={4}>Recent Notifications</Title>
+                  <Title order={4}>{t('dashboard.recentNotifications')}</Title>
                   {stats.unreadNotifications > 0 && (
                     <Badge color="red" variant="filled" size="sm">
                       {stats.unreadNotifications}
@@ -326,7 +348,7 @@ export function Dashboard() {
                 </Group>
                 {stats.unreadNotifications > 0 && (
                   <Button variant="subtle" size="xs" onClick={markAllNotificationsAsRead}>
-                    Mark all as read
+                    {t('dashboard.markAllAsRead')}
                   </Button>
                 )}
               </Group>
@@ -394,9 +416,9 @@ export function Dashboard() {
             <Card withBorder h="100%">
               <Card.Section p="md" withBorder>
                 <Group justify="space-between">
-                  <Title order={4}>Active Hackathons</Title>
+                  <Title order={4}>{t('dashboard.activeHackathons')}</Title>
                   <Anchor component={Link} to="/hackathons" size="sm">
-                    View all
+                    {t('dashboard.viewAll')}
                   </Anchor>
                 </Group>
               </Card.Section>
@@ -417,7 +439,7 @@ export function Dashboard() {
                                 color={getStatusColor(hackathon.status)}
                                 variant="light"
                               >
-                                {hackathon.status}
+                                {getStatusLabel(hackathon.status)}
                               </Badge>
                             </Group>
                             <Text size="sm" c="dimmed" lineClamp={2} mt="xs">
@@ -429,13 +451,17 @@ export function Dashboard() {
                           <Group gap="xs">
                             <IconUsers size={16} />
                             <Text size="sm">
-                              {hackathon.currentParticipants} participants
+                              {t('dashboard.participants', { count: hackathon.currentParticipants })}
                             </Text>
                           </Group>
                           <Group gap="xs">
                             <IconCalendar size={16} />
                             <Text size="sm">
-                              Ends {new Date(hackathon.endDate).toLocaleDateString()}
+                              {t('dashboard.ends', {
+                                date: new Date(hackathon.endDate).toLocaleDateString(
+                                  language === 'zh' ? 'zh-CN' : 'en-US',
+                                ),
+                              })}
                             </Text>
                           </Group>
                           <Button
@@ -444,14 +470,14 @@ export function Dashboard() {
                             variant="light"
                             size="xs"
                           >
-                            View Details
+                            {t('dashboard.viewDetails')}
                           </Button>
                         </Group>
                       </Paper>
                     ))
                   ) : (
                     <Text c="dimmed" ta="center" py="xl">
-                      No active hackathons at the moment
+                      {t('dashboard.noActiveHackathons')}
                     </Text>
                   )}
                 </Stack>
@@ -465,7 +491,7 @@ export function Dashboard() {
               {user && (
                 <Card withBorder>
                   <Card.Section p="md" withBorder>
-                    <Title order={4}>Quick Actions</Title>
+                    <Title order={4}>{t('dashboard.quickActions')}</Title>
                   </Card.Section>
                   <Card.Section p="md">
                     <Stack gap="sm">
@@ -476,7 +502,7 @@ export function Dashboard() {
                         variant="light"
                         leftSection={<IconTrophy size={16} />}
                       >
-                        Create Hackathon
+                        {t('dashboard.createHackathon')}
                       </Button>
                       <Button
                         component={Link}
@@ -485,7 +511,7 @@ export function Dashboard() {
                         variant="light"
                         leftSection={<IconUsers size={16} />}
                       >
-                        Browse Teams
+                        {t('dashboard.browseTeams')}
                       </Button>
                       <Button
                         component={Link}
@@ -494,7 +520,7 @@ export function Dashboard() {
                         variant="light"
                         leftSection={<IconBulb size={16} />}
                       >
-                        Explore Ideas
+                        {t('dashboard.exploreIdeas')}
                       </Button>
                       <Button
                         component={Link}
@@ -503,7 +529,7 @@ export function Dashboard() {
                         variant="light"
                         leftSection={<IconTrophy size={16} />}
                       >
-                        View Projects
+                        {t('dashboard.viewProjects')}
                       </Button>
                     </Stack>
                   </Card.Section>
@@ -513,7 +539,7 @@ export function Dashboard() {
               {/* Top Ideas */}
               <Card withBorder>
                 <Card.Section p="md" withBorder>
-                  <Title order={4}>Top Ideas</Title>
+                  <Title order={4}>{t('dashboard.topIdeas')}</Title>
                 </Card.Section>
                 <Card.Section p="md">
                   <Stack gap="sm">
@@ -534,7 +560,7 @@ export function Dashboard() {
                               <Group gap="xs">
                                 <IconHeart size={13} />
                                 <Text size="xs" c="dimmed">
-                                  {idea.votes} votes
+                                  {t('dashboard.votes', { count: idea.votes })}
                                 </Text>
                               </Group>
                             </div>
@@ -542,7 +568,7 @@ export function Dashboard() {
                         ))
                     ) : (
                       <Text c="dimmed" ta="center" py="md" size="sm">
-                        No ideas yet
+                        {t('dashboard.noIdeas')}
                       </Text>
                     )}
                   </Stack>

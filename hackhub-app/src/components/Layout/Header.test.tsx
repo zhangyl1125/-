@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { MemoryRouter } from 'react-router-dom'
 import { Header } from './Header'
+import { LanguageProvider } from '../../contexts/LanguageContext'
 
 // Mock SVG imports
 vi.mock('../../../assets/black_banner.svg', () => ({ default: 'black_banner.svg' }))
@@ -27,7 +28,9 @@ function renderHeader(props?: { opened?: boolean; toggle?: () => void }) {
   return render(
     <MemoryRouter>
       <MantineProvider>
-        <Header opened={opened} toggle={toggle} />
+        <LanguageProvider>
+          <Header opened={opened} toggle={toggle} />
+        </LanguageProvider>
       </MantineProvider>
     </MemoryRouter>
   )
@@ -36,6 +39,7 @@ function renderHeader(props?: { opened?: boolean; toggle?: () => void }) {
 describe('Header', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockUseAuthStore.mockReturnValue({
       user: {
         id: 'user-1',
@@ -55,7 +59,7 @@ describe('Header', () => {
 
   it('renders the user role', () => {
     renderHeader()
-    expect(screen.getByText('participant')).toBeInTheDocument()
+    expect(screen.getByText('参与者')).toBeInTheDocument()
   })
 
   it('renders the notification bell button', () => {
@@ -63,6 +67,18 @@ describe('Header', () => {
     // The bell icon ActionIcon should be present
     const bells = document.querySelectorAll('[data-testid], button, [role="button"]')
     expect(bells.length).toBeGreaterThan(0)
+  })
+
+  it('defaults to Chinese and toggles to English', () => {
+    renderHeader()
+    const languageToggle = screen.getByRole('button', { name: '切换到英文' })
+    expect(languageToggle).toHaveTextContent('中')
+    expect(languageToggle).not.toHaveTextContent('EN')
+    fireEvent.click(languageToggle)
+    const englishToggle = screen.getByRole('button', { name: 'Switch to Chinese' })
+    expect(englishToggle).toHaveTextContent('EN')
+    expect(englishToggle).not.toHaveTextContent('中')
+    expect(localStorage.getItem('hackhub-language')).toBe('en')
   })
 
   it('opens notification center when bell is clicked', () => {

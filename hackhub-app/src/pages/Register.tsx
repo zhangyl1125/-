@@ -12,6 +12,7 @@ import {
   Stack,
   Image,
   ActionIcon,
+  UnstyledButton,
   useMantineColorScheme,
   rem,
 } from '@mantine/core'
@@ -22,6 +23,7 @@ import { useAuthStore } from '../store/authStore'
 import { OrganizationService } from '../utils/organizations'
 import { ProfileService } from '../services/profileService'
 import { notifications } from '@mantine/notifications'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface RegisterFormData {
   name: string
@@ -35,6 +37,7 @@ export function Register() {
   const navigate = useNavigate()
   const { signup } = useAuthStore()
   const { colorScheme, toggleColorScheme } = useMantineColorScheme()
+  const { language, toggleLanguage } = useLanguage()
 
   const form = useForm<RegisterFormData>({
     initialValues: {
@@ -153,6 +156,16 @@ export function Register() {
 
   return (
     <Container size={420} my={40}>
+      <UnstyledButton
+        onClick={toggleLanguage}
+        aria-label={language === 'zh' ? '切换到英文' : 'Switch to Chinese'}
+        style={{ position: 'fixed', top: rem(20), right: rem(56) }}
+      >
+        <Text size="sm" fw={500} c="blue">
+          {language === 'zh' ? '中' : 'EN'}
+        </Text>
+      </UnstyledButton>
+
       <ActionIcon
         variant="subtle"
         size="lg"
