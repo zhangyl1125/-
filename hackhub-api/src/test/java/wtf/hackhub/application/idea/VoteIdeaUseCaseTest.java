@@ -45,6 +45,12 @@ class VoteIdeaUseCaseTest {
 		return new Profile(name.toLowerCase().replace(' ', '.') + "@bosch.com", name, "hash");
 	}
 
+	private Profile adminProfile(String email, String name) {
+		Profile profile = new Profile(email, name, "hash");
+		profile.changeRole(Profile.Role.ADMIN);
+		return profile;
+	}
+
 	private void allowVoting(Idea idea, UUID userId, String voterUnit, String projectUnit) {
 		when(profileRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(profile("WANG Alice")));
 		when(profileRepository.findById(idea.getCreatedBy()))
@@ -176,6 +182,53 @@ class VoteIdeaUseCaseTest {
 
 		assertThatThrownBy(() -> useCase.execute(ideaId, userId))
 				.isInstanceOf(VoteIdeaUseCase.ParticipantNotEligibleException.class);
+	}
+
+	@Test
+	void permits_non_roster_admin_to_vote_without_bypassing_vote_rules() {
+		UUID ideaId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		Idea target = idea(ideaId);
+		Profile admin = adminProfile("aah5sgh@bosch.com", "Yaolong.Zhang");
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(target));
+		when(profileRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(admin));
+		when(voteRepository.findByIdeaIdAndUserId(ideaId, userId)).thenReturn(Optional.empty());
+		when(voteRepository.findAllByUserIdAndHackathonId(userId, target.getHackathonId())).thenReturn(List.of());
+		when(profileRepository.findById(target.getCreatedBy())).thenReturn(Optional.of(admin));
+		when(voteRepository.countByIdeaId(ideaId)).thenReturn(1L);
+
+		VoteIdeaUseCase.Result result = useCase.execute(ideaId, userId);
+
+		assertThat(result.voted()).isTrue();
+		verify(voteRepository).save(any(IdeaVote.class));
+	}
+
+	@Test
+	void applies_same_department_limit_to_non_roster_admin_projects() {
+		UUID ideaId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		Idea target = idea(ideaId);
+		Idea previousOne = idea(UUID.randomUUID());
+		Idea previousTwo = idea(UUID.randomUUID());
+		IdeaVote voteOne = new IdeaVote(UUID.randomUUID(), userId);
+		IdeaVote voteTwo = new IdeaVote(UUID.randomUUID(), userId);
+		Profile admin = adminProfile("aah5sgh@bosch.com", "Yaolong.Zhang");
+
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(target));
+		when(profileRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(admin));
+		when(voteRepository.findByIdeaIdAndUserId(ideaId, userId)).thenReturn(Optional.empty());
+		when(voteRepository.findAllByUserIdAndHackathonId(userId, target.getHackathonId()))
+				.thenReturn(List.of(voteOne, voteTwo));
+		when(ideaRepository.findById(voteOne.getIdeaId())).thenReturn(Optional.of(previousOne));
+		when(ideaRepository.findById(voteTwo.getIdeaId())).thenReturn(Optional.of(previousTwo));
+		when(profileRepository.findById(target.getCreatedBy())).thenReturn(Optional.of(admin));
+		when(profileRepository.findById(previousOne.getCreatedBy())).thenReturn(Optional.of(admin));
+		when(profileRepository.findById(previousTwo.getCreatedBy())).thenReturn(Optional.of(admin));
+
+		assertThatThrownBy(() -> useCase.execute(ideaId, userId))
+				.isInstanceOf(VoteIdeaUseCase.OwnDepartmentVoteLimitExceededException.class)
+				.hasMessageContaining("ADMIN");
+		verify(voteRepository, never()).save(any());
 	}
 
 	@Test

@@ -98,7 +98,20 @@ public class VoteIdeaUseCase {
 			return byName;
 
 		String emailLocalPart = profile.getEmail().split("@", 2)[0].replaceFirst("(?i)^fixed-term[._-]*", "");
-		return uniqueParticipant(normalizeIdentity(emailLocalPart));
+		Optional<VotingParticipant> byEmail = uniqueParticipant(normalizeIdentity(emailLocalPart));
+		if (byEmail.isPresent())
+			return byEmail;
+
+		// Platform administrators need to verify the voting flow even when they are
+		// not members of the imported BD roster. Keep them in one explicit virtual
+		// department so the same 4-vote total and 2-vote own-department limits still
+		// apply. Non-admin accounts must continue to match the roster uniquely.
+		if (profile.getRole() == Profile.Role.ADMIN) {
+			return Optional.of(new VotingParticipant("admin:" + profile.getEmail(), "ADMIN", profile.getName(),
+					normalizeIdentity(profile.getName())));
+		}
+
+		return Optional.empty();
 	}
 
 	private Optional<VotingParticipant> uniqueParticipant(String normalizedName) {
