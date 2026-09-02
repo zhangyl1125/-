@@ -31,15 +31,15 @@ public class GetHackathonsUseCase {
 	}
 
 	/**
-	 * Org-scoped: returns only hackathons belonging to orgs the caller is a member
-	 * of.
+	 * Returns platform-wide hackathons (no organization) plus hackathons belonging
+	 * to organizations the caller is a member of.
 	 */
 	@Transactional(readOnly = true)
 	public Page<Hackathon> listForUser(UUID userId, Pageable pageable) {
 		List<UUID> orgIds = memberRepository.findAllByUserId(userId).stream().map(m -> m.getOrganizationId())
 				.collect(Collectors.toList());
 		if (orgIds.isEmpty()) {
-			return Page.empty(pageable);
+			return hackathonRepository.findByOrganizationIdIsNullOrderByCreatedAtDesc(pageable);
 		}
 		return hackathonRepository.findByOrganizationIdInOrderByCreatedAtDesc(orgIds, pageable);
 	}

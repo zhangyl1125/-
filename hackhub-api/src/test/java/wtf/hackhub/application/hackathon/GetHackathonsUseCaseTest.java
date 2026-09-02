@@ -74,16 +74,18 @@ class GetHackathonsUseCaseTest {
 	}
 
 	@Test
-	void list_for_user_returns_empty_when_no_orgs() {
+	void list_for_user_without_orgs_returns_platform_hackathons() {
 		UUID userId = UUID.randomUUID();
 		when(memberRepository.findAllByUserId(userId)).thenReturn(List.of());
+		when(hackathonRepository.findByOrganizationIdIsNullOrderByCreatedAtDesc(any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(hackathon())));
 
 		var page = useCase.listForUser(userId, Pageable.unpaged());
-		assertThat(page).isEmpty();
+		assertThat(page.getTotalElements()).isEqualTo(1);
 	}
 
 	@Test
-	void list_for_user_returns_org_hackathons() {
+	void list_for_user_returns_platform_and_org_hackathons() {
 		UUID userId = UUID.randomUUID();
 		UUID orgId = UUID.randomUUID();
 		OrganizationMember member = new OrganizationMember(orgId, userId, OrganizationMember.Role.MEMBER);

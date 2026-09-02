@@ -27,13 +27,31 @@ vi.mock('../hooks/useRealtime', () => ({
 
 vi.mock('../services/hackathonService', () => ({
   HackathonService: {
-    getHackathons: vi.fn().mockResolvedValue({ content: [] }),
+    getHackathons: vi.fn().mockResolvedValue({
+      content: [{ id: 'hackathon-1', title: 'Spring 2026 Hackathon' }],
+    }),
   },
 }))
 
 vi.mock('../services/ideaService', () => ({
   IdeaService: {
-    getIdeas: vi.fn(),
+    getIdeas: vi.fn().mockResolvedValue({
+      content: [{
+        id: 'idea-1',
+        title: 'Administrator Project',
+        description: 'Uploaded by an administrator',
+        teamId: 'team-1',
+        category: 'AI',
+        tags: ['Java'],
+        attachments: [],
+        projectAttachments: [],
+        votes: 2,
+        userHasVoted: false,
+        status: 'submitted',
+        createdAt: '2026-09-01T00:00:00Z',
+        updatedAt: '2026-09-01T00:00:00Z',
+      }],
+    }),
     voteIdea: vi.fn(),
     createIdea: vi.fn(),
     updateIdea: vi.fn(),
@@ -42,8 +60,8 @@ vi.mock('../services/ideaService', () => ({
 
 vi.mock('../services/teamService', () => ({
   TeamService: {
-    getTeams: vi.fn(),
-    getTeamMembers: vi.fn(),
+    getTeams: vi.fn().mockResolvedValue([{ id: 'team-1', name: 'Admin Team', hackathonId: 'hackathon-1' }]),
+    getTeamMembers: vi.fn().mockResolvedValue([]),
     createTeam: vi.fn(),
   },
 }))
@@ -60,7 +78,7 @@ vi.mock('../services/storageService', () => ({
 }))
 
 describe('ProjectShowcase', () => {
-  it('removes the construction banner and exposes project upload actions', async () => {
+  it('shows existing projects and exposes project upload to a participant', async () => {
     render(
       <MantineProvider>
         <ProjectShowcase />
@@ -70,6 +88,7 @@ describe('ProjectShowcase', () => {
     await waitFor(() => expect(screen.queryByText('Loading...')).not.toBeInTheDocument())
     expect(screen.queryByText('Under Construction')).not.toBeInTheDocument()
     expect(screen.queryByText(/This page is currently under development/)).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Upload Project' })).toHaveLength(2)
+    expect(screen.getByText('Administrator Project')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload Project' })).toBeInTheDocument()
   })
 })

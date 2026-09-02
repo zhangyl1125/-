@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -76,6 +77,15 @@ class HackathonControllerTest {
 
 		mvc.perform(get("/api/v1/hackathons?status=open").with(MockAuthHelper.asAdmin(USER_ID)))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].title").value("Hack 2026"));
+	}
+
+	@Test
+	void participant_list_uses_user_visible_hackathons() throws Exception {
+		when(getUseCase.listForUser(any(), any())).thenReturn(new PageImpl<>(List.of(hackathon())));
+
+		mvc.perform(get("/api/v1/hackathons").with(MockAuthHelper.asParticipant(USER_ID))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.content[0].title").value("Hack 2026"));
+		verify(getUseCase).listForUser(any(), any());
 	}
 
 	@Test

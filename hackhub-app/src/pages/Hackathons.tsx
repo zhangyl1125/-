@@ -162,11 +162,10 @@ export function Hackathons() {
     const myOrgIds = new Set(myOrgs.map(o => o.id))
 
     const filtered = hackathons.filter((hackathon) => {
-      // Org-scope: admin sees all. Everyone else only sees hackathons that belong
-      // to one of their orgs. Hackathons with no org are admin-only.
+      // Org-scope: admin sees all. Everyone else sees platform-wide hackathons
+      // (no organization) and hackathons belonging to one of their organizations.
       if (!isAdmin) {
-        if (!hackathon.organizationId) return false
-        if (!myOrgIds.has(hackathon.organizationId)) return false
+        if (hackathon.organizationId && !myOrgIds.has(hackathon.organizationId)) return false
       }
 
       const matchesSearch = hackathon.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

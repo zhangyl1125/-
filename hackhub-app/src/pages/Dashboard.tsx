@@ -77,18 +77,18 @@ export function Dashboard() {
       await fetchHackathons()
       const allHackathons = useHackathonStore.getState().hackathons
 
-      // Scope to user's orgs — same rule as the Hackathons page:
-      // admin sees all; everyone else only sees hackathons from their orgs.
+      // The API already scopes non-admin users to platform-wide hackathons and
+      // hackathons from their organizations. Keep the same rule client-side.
       let freshHackathons = allHackathons
       if (user && user.role !== 'admin') {
         try {
           const myOrgs = await OrganizationService.getMyOrganizations()
           const myOrgIds = new Set(myOrgs.map(o => o.id))
           freshHackathons = allHackathons.filter(
-            h => h.organizationId && myOrgIds.has(h.organizationId)
+            h => !h.organizationId || myOrgIds.has(h.organizationId)
           )
         } catch {
-          freshHackathons = []
+          freshHackathons = allHackathons.filter(h => !h.organizationId)
         }
       }
 

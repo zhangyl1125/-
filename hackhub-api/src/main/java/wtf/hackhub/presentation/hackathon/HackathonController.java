@@ -46,7 +46,7 @@ public class HackathonController {
 		this.updateJudgingConfigUseCase = updateJudgingConfigUseCase;
 	}
 
-	@Operation(summary = "List hackathons. Admin receives all; everyone else receives only hackathons from their orgs.")
+	@Operation(summary = "List hackathons. Admin receives all; everyone else receives platform-wide and own-org hackathons.")
 	@ApiResponse(responseCode = "200", description = "Success")
 	@GetMapping
 	public Page<HackathonResponse> list(@RequestParam(required = false) String status, Pageable pageable,
