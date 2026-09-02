@@ -37,6 +37,7 @@ import { notifications } from '@mantine/notifications'
 import { useAuthStore } from '../store/authStore'
 import { VotingService } from '../services/votingService'
 import { IdeaService } from '../services/ideaService'
+import { JudgingService } from '../services/judgingService'
 import { PermissionService } from '../utils/permissions'
 import type { Idea } from '../services/ideaService'
 import type { VotingCriteria } from '../services/votingService'
@@ -254,8 +255,20 @@ export function JudgingPanel(): React.ReactElement {
   const [scoredIdeas, setScoredIdeas] = useState<Set<string>>(new Set())
   const [submittingIdea, setSubmittingIdea] = useState<string | null>(null)
 
-  const canJudge =
-    user !== null && PermissionService.isManagerOrAbove(user)
+  const canManageJudging = user !== null && PermissionService.isManagerOrAbove(user)
+
+  const {
+    data: judges,
+    isLoading: judgeStatusLoading,
+  } = useQuery({
+    queryKey: ['hackathon-judges', hackathonId],
+    queryFn: () => JudgingService.getJudges(hackathonId!),
+    enabled: !!hackathonId && !!user,
+    staleTime: 60 * 1000,
+  })
+
+  const isAssignedJudge = (judges ?? []).some((judge) => judge.userId === user?.id)
+  const canJudge = canManageJudging || isAssignedJudge
 
   const {
     data: criteria,
@@ -283,7 +296,11 @@ export function JudgingPanel(): React.ReactElement {
     mutationFn: async ({ ideaId, scores }: ScoredIdea) => {
       const entries = Object.entries(scores)
       for (const [criteriaId, score] of entries) {
-        await VotingService.scoreIdea(ideaId, criteriaId, score)
+        if (isAssignedJudge) {
+          await JudgingService.submitScore(hackathonId!, { ideaId, criterionId: criteriaId, score })
+        } else {
+          await VotingService.scoreIdea(ideaId, criteriaId, score)
+        }
       }
       return ideaId
     },
@@ -312,6 +329,14 @@ export function JudgingPanel(): React.ReactElement {
     scoreIdeaMutation.mutate({ ideaId, scores })
   }
 
+  if (judgeStatusLoading) {
+    return (
+      <Container size="md" py="xl">
+        <Center py="xl"><Loader size="lg" /></Center>
+      </Container>
+    )
+  }
+
   if (!canJudge) {
     return (
       <Container size="md" py="xl">
@@ -322,7 +347,7 @@ export function JudgingPanel(): React.ReactElement {
             </ThemeIcon>
             <Title order={3}>Access Denied</Title>
             <Text ta="center" c="dimmed">
-              Only hackathon organizers and administrators can access the judging panel.
+              Only assigned judges, hackathon organizers and administrators can access the judging panel.
             </Text>
             <Button variant="light" onClick={() => navigate(`/hackathons/${hackathonId}`)}>
               Back to Hackathon

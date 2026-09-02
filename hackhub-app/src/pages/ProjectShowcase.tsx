@@ -20,6 +20,8 @@ import {
   Image,
   FileInput,
   Textarea,
+  Divider,
+  Loader,
 } from '@mantine/core'
 import {
   IconTrophy,
@@ -32,8 +34,11 @@ import {
   IconExternalLink,
   IconTool,
   IconUpload,
+  IconMessageCircle,
+  IconGavel,
 } from '@tabler/icons-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useRealtime } from '../hooks/useRealtime'
 import { notifications } from '@mantine/notifications'
@@ -45,6 +50,8 @@ import { ProfileService } from '../services/profileService'
 import { StorageService } from '../services/storageService'
 import { TeamService } from '../services/teamService'
 import type { Team } from '../services/teamService'
+import type { Comment } from '../services/ideaService'
+import { JudgingService } from '../services/judgingService'
 
 interface Project {
   id: string
@@ -92,6 +99,41 @@ interface ProjectUploadForm {
   demoUrl: string
 }
 
+interface ProjectComment extends Comment {
+  authorName: string
+}
+
+const PROJECT_TRACKS = [
+  {
+    value: 'AI & Intelligence',
+    label: 'AI & Intelligence',
+    description: 'AI models, intelligent assistants and automation',
+  },
+  {
+    value: 'Digital Transformation',
+    label: 'Digital Transformation',
+    description: 'Digital products, processes and efficiency improvements',
+  },
+  {
+    value: 'Green & Sustainability',
+    label: 'Green & Sustainability',
+    description: 'Low-carbon, circular economy and sustainable solutions',
+  },
+] as const
+
+function normalizeProjectTrack(category: string, technologies: string[]): string {
+  if (PROJECT_TRACKS.some((track) => track.value === category)) return category
+
+  const searchable = `${category} ${technologies.join(' ')}`.toLowerCase()
+  if (/sustain|green|climate|carbon|environment|low.?carbon/.test(searchable)) {
+    return PROJECT_TRACKS[2].value
+  }
+  if (/\bai\b|artificial intelligence|machine learning|developer|software/.test(searchable)) {
+    return PROJECT_TRACKS[0].value
+  }
+  return PROJECT_TRACKS[1].value
+}
+
 const CREATE_TEAM_VALUE = '__create_team__'
 
 const emptyUploadForm = (): ProjectUploadForm => ({
@@ -107,6 +149,7 @@ const emptyUploadForm = (): ProjectUploadForm => ({
 })
 
 export function ProjectShowcase() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const { isConnected } = useRealtime()
   const [projects, setProjects] = useState<Project[]>([])
@@ -119,6 +162,11 @@ export function ProjectShowcase() {
   const [userTeams, setUserTeams] = useState<Team[]>([])
   const [projectImage, setProjectImage] = useState<File | null>(null)
   const [uploadForm, setUploadForm] = useState<ProjectUploadForm>(emptyUploadForm)
+  const [comments, setComments] = useState<ProjectComment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentContent, setCommentContent] = useState('')
+  const [commentSubmitting, setCommentSubmitting] = useState(false)
+  const [assignedJudgeHackathons, setAssignedJudgeHackathons] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState<ProjectFilters>({
     search: '',
     category: '',
@@ -175,7 +223,7 @@ export function ProjectShowcase() {
               team_members: teamMembers,
               hackathon_id: hackathon.id,
               hackathon_name: hackathon.title,
-              category: idea.category,
+              category: normalizeProjectTrack(idea.category, idea.tags ?? []),
               technologies: idea.tags ?? [],
               github_url: idea.repositoryUrl ?? undefined,
               demo_url: idea.demoUrl ?? undefined,
@@ -213,13 +261,14 @@ export function ProjectShowcase() {
     void loadProjects()
   }, [loadProjects])
 
-  const openUploadModal = () => {
+  const openUploadModal = (track?: string) => {
     const hackathonId = uploadForm.hackathonId || hackathons[0]?.id || ''
     const firstTeam = userTeams.find((team) => team.hackathonId === hackathonId)
     setUploadForm((current) => ({
       ...current,
       hackathonId,
       teamId: current.teamId || firstTeam?.id || CREATE_TEAM_VALUE,
+      category: track || current.category || PROJECT_TRACKS[0].value,
     }))
     setUploadOpened(true)
   }
@@ -360,10 +409,6 @@ export function ProjectShowcase() {
     })
   }, [projects, filters])
 
-  const categories = useMemo(
-    () => [...new Set(projects.map((project) => project.category).filter(Boolean))].sort(),
-    [projects]
-  )
   const technologies = useMemo(
     () => [...new Set(projects.flatMap((project) => project.technologies))].sort(),
     [projects]
@@ -379,9 +424,69 @@ export function ProjectShowcase() {
     )
   }
 
+  const loadComments = async (projectId: string) => {
+    setCommentsLoading(true)
+    try {
+      const loadedComments = await IdeaService.getComments(projectId)
+      const authorNames = new Map<string, string>()
+      const commentsWithAuthors = await Promise.all(loadedComments.map(async (comment) => {
+        let authorName = authorNames.get(comment.userId)
+        if (!authorName) {
+          const profile = await ProfileService.getProfile(comment.userId).catch(() => null)
+          authorName = profile?.name ?? 'User'
+          authorNames.set(comment.userId, authorName)
+        }
+        return { ...comment, authorName }
+      }))
+      setComments(commentsWithAuthors)
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof ApiError ? error.message : 'Failed to load comments',
+        color: 'red',
+      })
+    } finally {
+      setCommentsLoading(false)
+    }
+  }
+
   const openProjectModal = (project: Project) => {
     setSelectedProject(project)
+    setComments([])
+    setCommentContent('')
     setModalOpened(true)
+    void loadComments(project.id)
+    if (user?.role === 'participant' && !assignedJudgeHackathons.has(project.hackathon_id)) {
+      void JudgingService.getJudges(project.hackathon_id).then((judges) => {
+        if (judges.some((judge) => judge.userId === user.id)) {
+          setAssignedJudgeHackathons((current) => new Set(current).add(project.hackathon_id))
+        }
+      }).catch(() => undefined)
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!selectedProject || !commentContent.trim()) return
+
+    setCommentSubmitting(true)
+    try {
+      await IdeaService.addComment(selectedProject.id, commentContent.trim())
+      setCommentContent('')
+      await loadComments(selectedProject.id)
+      notifications.show({
+        title: 'Comment Posted',
+        message: 'Your comment is now visible',
+        color: 'green',
+      })
+    } catch (error) {
+      notifications.show({
+        title: 'Comment Failed',
+        message: error instanceof ApiError ? error.message : 'Unable to post comment',
+        color: 'red',
+      })
+    } finally {
+      setCommentSubmitting(false)
+    }
   }
 
   return (
@@ -413,7 +518,7 @@ export function ProjectShowcase() {
               </Text>
             </div>
             <Group gap="md">
-              <Button leftSection={<IconUpload size={16} />} onClick={openUploadModal}>
+              <Button leftSection={<IconUpload size={16} />} onClick={() => openUploadModal()}>
                 Upload Project
               </Button>
               {/* Real-time connection indicator */}
@@ -435,6 +540,38 @@ export function ProjectShowcase() {
           </Group>
         </div>
 
+        {/* The existing category field is the persisted track identifier. */}
+        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+          {PROJECT_TRACKS.map((track, index) => (
+            <Card key={track.value} withBorder p="lg">
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Badge variant="light">Track {index + 1}</Badge>
+                  <Text size="sm" c="dimmed">
+                    {(() => {
+                      const count = projects.filter((project) => project.category === track.value).length
+                      return `${count} ${count === 1 ? 'project' : 'projects'}`
+                    })()}
+                  </Text>
+                </Group>
+                <Title order={4}>{track.label}</Title>
+                <Text size="sm" c="dimmed" mih={40}>{track.description}</Text>
+                <Group grow>
+                  <Button
+                    variant={filters.category === track.value ? 'filled' : 'light'}
+                    onClick={() => setFilters((current) => ({ ...current, category: track.value }))}
+                  >
+                    View Track
+                  </Button>
+                  <Button variant="outline" onClick={() => openUploadModal(track.value)}>
+                    Upload Work
+                  </Button>
+                </Group>
+              </Stack>
+            </Card>
+          ))}
+        </SimpleGrid>
+
         {/* Filters */}
         <Card withBorder>
           <Grid>
@@ -448,8 +585,8 @@ export function ProjectShowcase() {
             </Grid.Col>
             <Grid.Col span={{ base: 12, md: 3 }}>
               <Select
-                placeholder="Category"
-                data={categories}
+                placeholder="Track"
+                data={PROJECT_TRACKS.map((track) => ({ value: track.value, label: track.label }))}
                 value={filters.category}
                 onChange={(value) => setFilters(prev => ({ ...prev, category: value || '' }))}
                 clearable
@@ -528,6 +665,8 @@ export function ProjectShowcase() {
                     {project.description}
                   </Text>
 
+                  <Badge variant="outline" w="fit-content">{project.category}</Badge>
+
                   {/* Team & Hackathon */}
                   <div>
                     <Group gap="xs" mb="xs">
@@ -597,7 +736,7 @@ export function ProjectShowcase() {
                     <IconTrophy size={30} />
                   </ThemeIcon>
                   <Text c="dimmed">No projects found matching your filters</Text>
-                  <Button leftSection={<IconUpload size={16} />} onClick={openUploadModal}>
+                  <Button leftSection={<IconUpload size={16} />} onClick={() => openUploadModal()}>
                     Upload Project
                   </Button>
                 </Stack>
@@ -631,6 +770,7 @@ export function ProjectShowcase() {
 
             {/* Description */}
             <Text>{selectedProject.description}</Text>
+            <Badge variant="light" w="fit-content">{selectedProject.category}</Badge>
 
             {/* Team Members */}
             <div>
@@ -684,6 +824,17 @@ export function ProjectShowcase() {
                   Live Demo
                 </Button>
               )}
+              {(user.role === 'admin' || user.role === 'manager'
+                || assignedJudgeHackathons.has(selectedProject.hackathon_id)) && (
+                <Button
+                  leftSection={<IconGavel size={16} />}
+                  variant="light"
+                  color="indigo"
+                  onClick={() => navigate(`/hackathons/${selectedProject.hackathon_id}/judge`)}
+                >
+                  Open Judging Panel
+                </Button>
+              )}
             </Group>
 
             {/* Vote Button */}
@@ -695,6 +846,54 @@ export function ProjectShowcase() {
               onClick={() => handleVote(selectedProject.id)}
             >
               {selectedProject.user_vote ? 'Voted' : 'Vote'} ({selectedProject.votes})
+            </Button>
+
+            <Divider />
+
+            <div>
+              <Group justify="space-between" mb="sm">
+                <Title order={5}>Comments</Title>
+                <Badge variant="light" color="gray">{comments.length}</Badge>
+              </Group>
+              {commentsLoading ? (
+                <Center py="md"><Loader size="sm" /></Center>
+              ) : comments.length > 0 ? (
+                <Stack gap="sm">
+                  {comments.map((comment) => (
+                    <Card key={comment.id} withBorder p="sm">
+                      <Group gap="xs">
+                        <Avatar size="sm">{comment.authorName.charAt(0)}</Avatar>
+                        <div>
+                          <Text size="sm" fw={600}>{comment.authorName}</Text>
+                          <Text size="xs" c="dimmed">
+                            {new Date(comment.createdAt).toLocaleString()}
+                          </Text>
+                        </div>
+                      </Group>
+                      <Text size="sm" mt="xs" style={{ whiteSpace: 'pre-wrap' }}>{comment.content}</Text>
+                    </Card>
+                  ))}
+                </Stack>
+              ) : (
+                <Text size="sm" c="dimmed">No comments yet. Be the first to comment.</Text>
+              )}
+            </div>
+
+            <Textarea
+              label="Add a Comment"
+              placeholder="Share feedback about this project..."
+              minRows={2}
+              maxLength={1000}
+              value={commentContent}
+              onChange={(event) => setCommentContent(event.target.value)}
+            />
+            <Button
+              leftSection={<IconMessageCircle size={16} />}
+              onClick={handleAddComment}
+              loading={commentSubmitting}
+              disabled={!commentContent.trim()}
+            >
+              Post Comment
             </Button>
           </Stack>
         )}
@@ -766,12 +965,13 @@ export function ProjectShowcase() {
                 onChange={(event) => setUploadForm((current) => ({ ...current, description: event.target.value }))}
               />
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                <TextInput
-                  label="Category"
+                <Select
+                  label="Track"
                   required
-                  placeholder="e.g. Artificial Intelligence"
+                  placeholder="Select a track"
+                  data={PROJECT_TRACKS.map((track) => ({ value: track.value, label: track.label }))}
                   value={uploadForm.category}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, category: event.target.value }))}
+                  onChange={(category) => setUploadForm((current) => ({ ...current, category: category ?? '' }))}
                 />
                 <TextInput
                   label="Technologies"
