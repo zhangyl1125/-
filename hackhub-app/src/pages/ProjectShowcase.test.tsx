@@ -269,7 +269,7 @@ describe('ProjectShowcase', () => {
     await waitFor(() => expect(getOrCreateNominationTeam).toHaveBeenCalledWith(expect.objectContaining({
       name: 'User nomination',
       hackathonId: 'hackathon-1',
-    }), 'user-1')))
+    }), 'user-1'))
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
       teamId: 'personal-team',
       category: 'Customer Values',

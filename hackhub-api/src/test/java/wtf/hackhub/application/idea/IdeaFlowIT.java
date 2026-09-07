@@ -66,9 +66,12 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 
 	@Test
 	void vote_toggles_on_and_off() {
-		Idea idea = submitIdea.execute("Vote Me", "desc", hackathonId, teamId, creatorId, "Tech", List.of());
+		UUID nomineeId = UUID.fromString(insertProfile("leoxu@bosch.com", "XU Leo", "participant"));
+		String nomination = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nomineeId + "\"}]";
+		Idea idea = submitIdea.executeNomination("Vote Me", "desc", hackathonId, teamId, creatorId, "Tech",
+				List.of(), Idea.Status.SUBMITTED, null, null, nomination);
 
-		UUID voter = UUID.fromString(insertProfile("voter@test.com", "Voter", "participant"));
+		UUID voter = UUID.fromString(insertProfile("barriexie@bosch.com", "XIE Barrie", "participant"));
 
 		VoteIdeaUseCase.Result first = voteIdea.execute(idea.getId(), voter);
 		assertThat(first.voted()).isTrue();

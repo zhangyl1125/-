@@ -1,6 +1,6 @@
 .PHONY: up up-infra down down-clean ps logs \
         build build-api build-app \
-        test-all test-all-with-integration test-api test-api-integration test-app test-e2e test-e2e-clean reset-db \
+        test-all test-all-with-integration test-api test-api-integration test-integration test-app test-e2e test-e2e-clean reset-db \
         lint lint-api lint-app \
         migrate migrate-info seed clean \
         test-features-sync sdlc-report sdlc-rotate-logs sdlc-branch-protection help
@@ -61,6 +61,9 @@ test-api:
 ## Spring Boot integration tests on Java 21 (requires Docker for Testcontainers)
 test-api-integration:
 	docker compose --profile test run --build --rm api-integration-test
+
+## Compatibility alias used by the Definition of Done
+test-integration: test-api-integration
 
 ## Frontend Vitest suite
 test-app:
@@ -149,7 +152,7 @@ help:
 	@echo ""
 	@echo "  Stack:    up | up-infra | down | down-clean | ps | logs [service=X]"
 	@echo "  Build:    build | build-api | build-app"
-	@echo "  Tests:    test-all | test-api | test-app | test-e2e"
+	@echo "  Tests:    test-all | test-all-with-integration | test-api | test-api-integration | test-app | test-e2e"
 	@echo "  Lint:     lint | lint-api | lint-app"
 	@echo "  DB:       migrate | migrate-info | seed"
 	@echo "  Other:    clean | help"

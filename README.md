@@ -190,16 +190,17 @@ make seed             # Create admin account + sample hackathon
 ### Tests
 
 ```bash
-make test-api         # 160+ unit tests + JaCoCo ≥60% coverage gate
+make test-api         # Java 21 container: unit tests + JaCoCo ≥80% coverage gate
+make test-api-integration # Java 21 + isolated PostgreSQL Testcontainers tests
 make test-app         # 20 Vitest frontend tests
 make test-e2e         # Playwright E2E (requires make up first)
 make test-all         # All three suites
 ```
 
-Run integration tests with a real Postgres (requires Docker):
+Run integration tests with a real, isolated PostgreSQL 16 instance (requires Docker):
 
 ```bash
-cd api && mvn test -Pintegration
+make test-api-integration
 ```
 
 ### Lint and format

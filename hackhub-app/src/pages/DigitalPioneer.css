@@ -136,6 +136,12 @@
 }
 
 .dp-header-navigation { flex: 1; min-width: 0; }
+@media (min-width: 90em) {
+  .dp-navigation-toggle { display: none; }
+}
+@media (max-width: 89.999em) {
+  .dp-header-navigation { display: none; }
+}
 .dp-top-navigation { display: flex; align-items: center; justify-content: center; gap: 4px; }
 .dp-top-navigation .dp-navlink { width: auto; flex: 0 0 auto; padding: 12px 10px; white-space: nowrap; }
 .dp-navlink .mantine-NavLink-label { font-size: 0.9375rem; font-weight: 500; }
@@ -982,7 +988,7 @@
   }
 
   .dp-award-lens {
-    width: min(88vw, 410px);
+    width: min(100%, 410px);
   }
 }
 

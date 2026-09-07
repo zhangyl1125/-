@@ -49,11 +49,11 @@ export function Header({ opened, toggle }: HeaderProps) {
   return (
     <Group h="100%" px={{ base: 12, sm: 'md' }} justify="space-between" wrap="nowrap" gap={8}>
       <Group className="dp-header-leading" gap={8}>
-        <Burger opened={opened} onClick={toggle} hiddenFrom="90em" size="sm" aria-label={language === 'zh' ? '切换导航菜单' : 'Toggle navigation'} />
+        <Burger opened={opened} onClick={toggle} className="dp-navigation-toggle" size="sm" aria-label={language === 'zh' ? '切换导航菜单' : 'Toggle navigation'} />
         <AwardBrand />
       </Group>
 
-      <Box visibleFrom="90em" className="dp-header-navigation"><Sidebar horizontal /></Box>
+      <Box className="dp-header-navigation"><Sidebar horizontal /></Box>
 
       <Group className="dp-header-actions" gap={8}>
         <UnstyledButton

@@ -94,9 +94,6 @@ export function DigitalPioneerOverview(): ReactElement {
           <Grid.Col span={{ base: 12, md: 7 }}>
             <h2 id="award-categories-title" className="dp-section-title">{text.categoriesTitle}</h2>
           </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 5 }}>
-            <Text className="dp-section-copy">{text.categoriesBody}</Text>
-          </Grid.Col>
         </Grid>
 
         <div className="dp-track-grid">

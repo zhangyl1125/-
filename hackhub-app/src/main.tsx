@@ -32,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
           primaryColor: 'grape',
           defaultRadius: 'md',
           fontFamily: 'var(--app-font-body)',
+          fontSizes: { xs: '0.875rem', sm: '0.9375rem' },
           headings: { fontFamily: 'var(--app-font-body)' },
         }}
       >
