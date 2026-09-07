@@ -1,38 +1,28 @@
-import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AppShell, LoadingOverlay } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useEffect } from 'react'
 import { Header } from './components/Layout/Header'
 import { Sidebar } from './components/Layout/Sidebar'
-import { Dashboard } from './pages/Dashboard'
-import { Hackathons } from './pages/Hackathons'
-import HackathonDetail from './pages/HackathonDetail'
+import { AwardManagement } from './pages/AwardManagement'
 import CreateHackathon from './pages/CreateHackathon'
 import { HackathonEdit } from './pages/HackathonEdit'
-import { Teams } from './pages/Teams'
 import { ProjectShowcase } from './pages/ProjectShowcase'
 import { Profile } from './pages/Profile'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
-import { OrganizationSetup } from './pages/OrganizationSetup'
-import { Organizations } from './pages/Organizations'
-import { OrganizationDetail } from './pages/OrganizationDetail'
 import { AdminUsers } from './pages/AdminUsers'
-import { AdminOrganizations } from './pages/AdminOrganizations'
-import { TeamDetail } from './pages/TeamDetail'
 import { JudgingPanel } from './pages/JudgingPanel'
 import { Leaderboard } from './pages/Leaderboard'
 import { AcceptInvitation } from './pages/AcceptInvitation'
 import { useAuthStore } from './store/authStore'
 import { RealtimeProvider } from './contexts/RealtimeContext'
-
-function IdeasRedirect() {
-  const { id } = useParams<{ id: string }>()
-  return <Navigate to={`/hackathons/${id}/teams`} replace />
-}
+import { DigitalPioneerOverview } from './pages/DigitalPioneerOverview'
+import { LandingPage } from './pages/LandingPage'
 
 function App() {
-  const [opened, { toggle }] = useDisclosure()
+  const [opened, { toggle, close }] = useDisclosure()
+  const location = useLocation()
   const { user, loading, initialized, initialize } = useAuthStore()
 
   // Initialize auth on app start
@@ -42,7 +32,12 @@ function App() {
     }
   }, [initialized, initialize])
 
-  // Show loading while initializing
+  // The public landing page should paint immediately; session recovery continues in the background.
+  if (!initialized && location.pathname === '/') {
+    return <LandingPage />
+  }
+
+  // Keep protected and authentication routes covered while the session is being resolved.
   if (!initialized || loading) {
     return <LoadingOverlay visible />
   }
@@ -50,14 +45,17 @@ function App() {
   if (!user) {
     return (
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/organization/setup" element={<OrganizationSetup />} />
+        <Route path="/organization/setup" element={<Navigate to="/" replace />} />
         <Route path="/invite/:token" element={<AcceptInvitation />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     )
   }
+
+  const isParticipant = user.role === 'participant'
 
   return (
     <RealtimeProvider>
@@ -65,43 +63,49 @@ function App() {
         header={{ height: 70 }}
         navbar={{
           width: 300,
-          breakpoint: 'sm',
-          collapsed: { mobile: !opened },
+          breakpoint: '90em',
+          collapsed: { mobile: !opened, desktop: true },
         }}
         padding="md"
       >
-        <AppShell.Header>
+        <AppShell.Header className="dp-app-header">
           <Header opened={opened} toggle={toggle} />
         </AppShell.Header>
 
-        <AppShell.Navbar p="md">
-          <Sidebar />
+        <AppShell.Navbar p="md" className="dp-app-navbar">
+          <Sidebar onNavigate={close} />
         </AppShell.Navbar>
 
-        <AppShell.Main>
+        <AppShell.Main className="dp-app-main">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/hackathons" element={<Hackathons />} />
-            <Route path="/hackathons/create" element={<CreateHackathon />} />
-            <Route path="/hackathons/:id" element={<HackathonDetail />} />
-            <Route path="/hackathons/:id/edit" element={<HackathonEdit />} />
-            <Route path="/hackathons/:id/teams" element={<Teams />} />
-            <Route path="/organizations/:orgId/hackathons/:id/teams" element={<Teams />} />
-            <Route path="/teams" element={<Teams />} />
-            <Route path="/teams/:id" element={<TeamDetail />} />
-            <Route path="/ideas" element={<Navigate to="/teams" replace />} />
-            <Route path="/hackathons/:id/ideas" element={<IdeasRedirect />} />
+            <Route path="/" element={<DigitalPioneerOverview />} />
+            <Route path="/committee" element={<AwardManagement />} />
+            <Route path="/awards" element={<AwardManagement />} />
+            <Route path="/awards/:id" element={<AwardManagement />} />
+            <Route path="/hackathons" element={isParticipant ? <Navigate to="/" replace /> : <AwardManagement />} />
+            <Route path="/hackathons/create" element={isParticipant ? <Navigate to="/" replace /> : <CreateHackathon />} />
+            <Route path="/hackathons/:id" element={isParticipant ? <Navigate to="/" replace /> : <AwardManagement />} />
+            <Route path="/hackathons/:id/edit" element={isParticipant ? <Navigate to="/" replace /> : <HackathonEdit />} />
+            <Route path="/hackathons/:id/teams" element={<Navigate to="/projects" replace />} />
+            <Route path="/organizations/:orgId/hackathons/:id/teams" element={<Navigate to="/projects" replace />} />
+            <Route path="/teams" element={<Navigate to="/projects" replace />} />
+            <Route path="/teams/:id" element={<Navigate to="/projects" replace />} />
+            <Route path="/ideas" element={<Navigate to="/projects" replace />} />
+            <Route path="/hackathons/:id/ideas" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectShowcase />} />
+            <Route path="/nominate" element={<ProjectShowcase nominationMode />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/organization/setup" element={<OrganizationSetup />} />
-            <Route path="/organizations" element={<Organizations />} />
-            <Route path="/organizations/new" element={<OrganizationSetup />} />
-            <Route path="/organizations/:id" element={<OrganizationDetail />} />
+            <Route path="/organization/setup" element={<Navigate to="/" replace />} />
+            <Route path="/organizations" element={<Navigate to="/" replace />} />
+            <Route path="/organizations/new" element={<Navigate to="/" replace />} />
+            <Route path="/organizations/:id" element={<Navigate to="/" replace />} />
             <Route path="/admin/users" element={<AdminUsers />} />
-            <Route path="/admin/organizations" element={<AdminOrganizations />} />
+            <Route path="/admin/organizations" element={<Navigate to="/" replace />} />
             <Route path="/hackathons/:hackathonId/judge" element={<JudgingPanel />} />
             <Route path="/hackathons/:hackathonId/leaderboard" element={<Leaderboard />} />
             <Route path="/invite/:token" element={<AcceptInvitation />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell.Main>
       </AppShell>

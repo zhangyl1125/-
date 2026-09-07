@@ -99,6 +99,15 @@ describe('IdeaService', () => {
     })
   })
 
+  it('creates the submitted nomination with serialized metadata, photo and evidence in one request', async () => {
+    const attachments = [{ type: 'nomination' as const, name: 'Associate', url: '', nomineeUserId: 'nominee-1' }, { type: 'screenshot' as const, name: 'Portrait', url: '/photo.png' }]
+    const input: CreateIdeaInput = { title: 'Complete nomination', description: 'Evidence', hackathonId: 'h-1', category: 'Customer Values', status: 'submitted', projectAttachments: attachments, repositoryUrl: 'https://example.com/evidence', demoUrl: null }
+    mockApi.post.mockResolvedValueOnce({ ...BASE_IDEA, ...input })
+    await IdeaService.createIdea(input)
+    expect(mockApi.post).toHaveBeenCalledWith('/api/v1/hackathons/h-1/ideas', { ...input, projectAttachments: JSON.stringify(attachments) })
+    expect(mockApi.put).not.toHaveBeenCalled()
+  })
+
   describe('updateIdea', () => {
     it('puts to correct idea endpoint', async () => {
       mockApi.put.mockResolvedValueOnce({ ...BASE_IDEA, title: 'Updated Idea' })

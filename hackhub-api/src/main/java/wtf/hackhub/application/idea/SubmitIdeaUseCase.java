@@ -1,11 +1,17 @@
 package wtf.hackhub.application.idea;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import wtf.hackhub.domain.Hackathon;
 import wtf.hackhub.domain.Idea;
+import wtf.hackhub.domain.Profile;
+import wtf.hackhub.infrastructure.persistence.IdeaMutationLock;
+import wtf.hackhub.infrastructure.persistence.auth.ProfileRepository;
 import wtf.hackhub.infrastructure.persistence.hackathon.HackathonRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaRepository;
+import wtf.hackhub.infrastructure.persistence.judging.JudgeScoreRepository;
 import wtf.hackhub.infrastructure.persistence.organization.OrganizationMemberRepository;
 import wtf.hackhub.infrastructure.persistence.team.TeamMemberRepository;
 import wtf.hackhub.infrastructure.persistence.team.TeamRepository;
@@ -15,8 +21,11 @@ import java.util.UUID;
 
 @Service
 public class SubmitIdeaUseCase {
+	private final IdeaMutationLock mutationLock;
 
 	private final IdeaRepository ideaRepository;
+	private final JudgeScoreRepository judgeScoreRepository;
+	private final ProfileRepository profileRepository;
 	private final HackathonRepository hackathonRepository;
 	private final TeamRepository teamRepository;
 	private final TeamMemberRepository teamMemberRepository;
@@ -24,8 +33,12 @@ public class SubmitIdeaUseCase {
 
 	public SubmitIdeaUseCase(IdeaRepository ideaRepository, HackathonRepository hackathonRepository,
 			TeamRepository teamRepository, TeamMemberRepository teamMemberRepository,
-			OrganizationMemberRepository orgMemberRepository) {
+			OrganizationMemberRepository orgMemberRepository, ProfileRepository profileRepository, IdeaMutationLock mutationLock,
+			JudgeScoreRepository judgeScoreRepository) {
 		this.ideaRepository = ideaRepository;
+		this.mutationLock = mutationLock;
+		this.judgeScoreRepository = judgeScoreRepository;
+		this.profileRepository = profileRepository;
 		this.hackathonRepository = hackathonRepository;
 		this.teamRepository = teamRepository;
 		this.teamMemberRepository = teamMemberRepository;
@@ -35,6 +48,14 @@ public class SubmitIdeaUseCase {
 	@Transactional
 	public Idea execute(String title, String description, UUID hackathonId, UUID teamId, UUID createdBy,
 			String category, List<String> tags) {
+		return executeNomination(title, description, hackathonId, teamId, createdBy, category, tags,
+				Idea.Status.DRAFT, null, null, null);
+	}
+
+	@Transactional
+	public Idea executeNomination(String title, String description, UUID hackathonId, UUID teamId, UUID createdBy,
+			String category, List<String> tags, Idea.Status status, String repositoryUrl, String demoUrl,
+			String projectAttachments) {
 
 		// Validate hackathon exists
 		Hackathon hackathon = hackathonRepository.findById(hackathonId)
@@ -57,28 +78,61 @@ public class SubmitIdeaUseCase {
 			throw new IdeaAccessDeniedException(null, createdBy);
 		}
 
+		validateNominee(projectAttachments, createdBy);
 		Idea idea = new Idea(title, description, hackathonId, teamId, createdBy, category);
-		if (tags != null) {
-			idea.update(title, description, category, tags, Idea.Status.DRAFT, null, null, null);
-		}
+		idea.update(title, description, category, tags == null ? List.of() : tags,
+				status == null ? Idea.Status.DRAFT : status, repositoryUrl, demoUrl, projectAttachments);
 		return ideaRepository.save(idea);
 	}
 
 	@Transactional
 	public Idea update(UUID ideaId, UUID requestingUserId, String title, String description, String category,
 			List<String> tags, Idea.Status status, String repositoryUrl, String demoUrl, String projectAttachments) {
+		mutationLock.acquire(ideaId);
 		Idea idea = ideaRepository.findById(ideaId)
 				.orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(ideaId));
 		if (!idea.getCreatedBy().equals(requestingUserId)) {
 			throw new IdeaAccessDeniedException(ideaId, requestingUserId);
+		}
+		validateNominee(projectAttachments, requestingUserId);
+		if (idea.getVotes() > 0 || !judgeScoreRepository.findAllByIdeaId(ideaId).isEmpty()) {
+			Idea proposed = new Idea(title, description, idea.getHackathonId(), idea.getTeamId(), idea.getCreatedBy(), category);
+			proposed.update(title, description, category, tags, idea.getStatus(), repositoryUrl, demoUrl, projectAttachments);
+			if (!idea.getCategory().equalsIgnoreCase(category)
+					|| !VoteIdeaUseCase.nomineeId(idea).equals(VoteIdeaUseCase.nomineeId(proposed))) {
+				throw new IllegalArgumentException("Track and nominee cannot change after voting or committee scoring has started");
+			}
 		}
 		Idea.Status resolvedStatus = status != null ? status : idea.getStatus();
 		idea.update(title, description, category, tags, resolvedStatus, repositoryUrl, demoUrl, projectAttachments);
 		return ideaRepository.save(idea);
 	}
 
+	private void validateNominee(String attachments, UUID requesterId) {
+		if (attachments == null || attachments.isBlank()) return;
+		try {
+			var items = new ObjectMapper().readTree(attachments);
+			if (items == null || !items.isArray()) throw new IllegalArgumentException("Nomination attachments must be an array");
+			int nominations = 0;
+			for (var item : items) {
+				if (!"nomination".equals(item.path("type").asText())) continue;
+				if (++nominations > 1) throw new IllegalArgumentException("Only one nominee is allowed");
+				UUID nomineeId = UUID.fromString(item.path("nomineeUserId").asText());
+				if (!profileRepository.existsById(nomineeId)) throw new IllegalArgumentException("Nominee profile not found");
+				if (!nomineeId.equals(requesterId)) {
+					var requester = profileRepository.findById(requesterId).orElseThrow(() -> new IdeaAccessDeniedException(null, requesterId));
+					if (requester.getRole() != Profile.Role.ADMIN && requester.getRole() != Profile.Role.MANAGER)
+						throw new IdeaAccessDeniedException(null, requesterId);
+				}
+			}
+		} catch (JsonProcessingException ex) {
+			throw new IllegalArgumentException("Invalid nomination attachments");
+		}
+	}
+
 	@Transactional
 	public void delete(UUID ideaId, UUID requestingUserId) {
+		mutationLock.acquire(ideaId);
 		Idea idea = ideaRepository.findById(ideaId)
 				.orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(ideaId));
 		if (!idea.getCreatedBy().equals(requestingUserId)) {

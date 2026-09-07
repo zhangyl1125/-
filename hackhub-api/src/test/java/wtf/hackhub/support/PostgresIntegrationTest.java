@@ -9,8 +9,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Base class for integration tests that need a real PostgreSQL database. Single
@@ -22,13 +20,18 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Tag("integration")
 @SpringBootTest
-@Testcontainers
 @ActiveProfiles("integrationtest")
 public abstract class PostgresIntegrationTest {
 
-	@Container
 	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-			.withDatabaseName("hackhub_test").withUsername("hackhub").withPassword("hackhub").withReuse(true);
+			.withDatabaseName("hackhub_test").withUsername("hackhub").withPassword("hackhub");
+
+	static {
+		// Keep one database alive for the shared Spring context. A JUnit-managed
+		// inherited @Container is stopped after each concrete test class, leaving
+		// the reused DataSource pointing at a closed container.
+		POSTGRES.start();
+	}
 
 	@DynamicPropertySource
 	static void configureDataSource(DynamicPropertyRegistry registry) {

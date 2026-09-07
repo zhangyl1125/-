@@ -3,6 +3,7 @@ package wtf.hackhub.application.idea;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.test.context.support.WithMockUser;
 import wtf.hackhub.application.hackathon.CreateHackathonUseCase;
 import wtf.hackhub.application.hackathon.UpdateHackathonUseCase;
 import wtf.hackhub.domain.Hackathon;
@@ -16,6 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@WithMockUser(roles = "ADMIN")
 class IdeaFlowIT extends PostgresIntegrationTest {
 
 	@Autowired
@@ -33,6 +35,7 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 
 	UUID creatorId;
 	UUID hackathonId;
+	UUID teamId;
 
 	@BeforeEach
 	void setup() {
@@ -43,11 +46,15 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 		updateHackathon.transitionStatus(h.getId(), Hackathon.Status.OPEN);
 		updateHackathon.transitionStatus(h.getId(), Hackathon.Status.RUNNING);
 		hackathonId = h.getId();
+		teamId = UUID.fromString(jdbc.queryForObject(
+				"INSERT INTO teams (name, description, hackathon_id, created_by) VALUES (?,?,?,?) RETURNING id::text",
+				String.class, "Creator's individual team", "Individual submission", hackathonId, creatorId));
+		jdbc.update("INSERT INTO team_members (team_id, user_id, role) VALUES (?,?,?)", teamId, creatorId, "leader");
 	}
 
 	@Test
 	void submit_and_retrieve_idea() {
-		Idea idea = submitIdea.execute("My Idea", "Great concept", hackathonId, null, creatorId, "AI", List.of("ml"));
+		Idea idea = submitIdea.execute("My Idea", "Great concept", hackathonId, teamId, creatorId, "AI", List.of("ml"));
 
 		assertThat(idea.getId()).isNotNull();
 		assertThat(idea.getTitle()).isEqualTo("My Idea");
@@ -59,7 +66,7 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 
 	@Test
 	void vote_toggles_on_and_off() {
-		Idea idea = submitIdea.execute("Vote Me", "desc", hackathonId, null, creatorId, "Tech", List.of());
+		Idea idea = submitIdea.execute("Vote Me", "desc", hackathonId, teamId, creatorId, "Tech", List.of());
 
 		UUID voter = UUID.fromString(insertProfile("voter@test.com", "Voter", "participant"));
 
@@ -74,7 +81,7 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 
 	@Test
 	void add_and_list_comments() {
-		Idea idea = submitIdea.execute("Comment Me", "desc", hackathonId, null, creatorId, "UX", List.of());
+		Idea idea = submitIdea.execute("Comment Me", "desc", hackathonId, teamId, creatorId, "UX", List.of());
 		UUID commenter = UUID.fromString(insertProfile("comm@test.com", "Comm", "participant"));
 
 		commentUseCase.add(idea.getId(), commenter, "Looks good!");
@@ -87,7 +94,7 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 
 	@Test
 	void non_owner_cannot_update_idea() {
-		Idea idea = submitIdea.execute("Protected", "desc", hackathonId, null, creatorId, "Tech", List.of());
+		Idea idea = submitIdea.execute("Protected", "desc", hackathonId, teamId, creatorId, "Tech", List.of());
 		UUID intruder = UUID.fromString(insertProfile("intruder@test.com", "Bad", "participant"));
 
 		assertThatThrownBy(() -> submitIdea.update(idea.getId(), intruder, "Hijacked", "d", "Tech", List.of(),
@@ -97,8 +104,8 @@ class IdeaFlowIT extends PostgresIntegrationTest {
 
 	@Test
 	void list_ideas_for_hackathon() {
-		submitIdea.execute("Idea A", "d", hackathonId, null, creatorId, "AI", List.of());
-		submitIdea.execute("Idea B", "d", hackathonId, null, creatorId, "Web", List.of());
+		submitIdea.execute("Idea A", "d", hackathonId, teamId, creatorId, "AI", List.of());
+		submitIdea.execute("Idea B", "d", hackathonId, teamId, creatorId, "Web", List.of());
 
 		var page = getIdeas.listByHackathon(hackathonId, org.springframework.data.domain.Pageable.unpaged());
 		assertThat(page.getTotalElements()).isEqualTo(2);

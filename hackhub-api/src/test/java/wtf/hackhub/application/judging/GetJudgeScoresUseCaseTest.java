@@ -39,6 +39,8 @@ class GetJudgeScoresUseCaseTest {
 	@Mock
 	TeamRepository teamRepository;
 
+	@Mock
+	wtf.hackhub.infrastructure.persistence.idea.VotingCriteriaRepository criteriaRepository;
 	@InjectMocks
 	GetJudgeScoresUseCase useCase;
 
@@ -191,4 +193,38 @@ class GetJudgeScoresUseCaseTest {
 		assertThat(result.get(0).rank()).isEqualTo(1);
 		assertThat(result.get(0).blendedScore()).isGreaterThan(result.get(1).blendedScore());
 	}
+	@Test
+	void panel_uses_70_30_weights_and_excludes_incomplete_judges() {
+		UUID award = UUID.randomUUID(), idea = UUID.randomUUID(), judge = UUID.randomUUID();
+		var behavior = new wtf.hackhub.domain.VotingCriteria(award, "Behavior", "", 70, 0);
+		var impact = new wtf.hackhub.domain.VotingCriteria(award, "Business impact", "", 30, 1);
+		UUID behaviorId = UUID.randomUUID(), impactId = UUID.randomUUID();
+		org.springframework.test.util.ReflectionTestUtils.setField(behavior, "id", behaviorId);
+		org.springframework.test.util.ReflectionTestUtils.setField(impact, "id", impactId);
+		var scores = List.of(new JudgeScore(award, idea, judge, behaviorId, 10, "Evidence"),
+				new JudgeScore(award, idea, judge, impactId, 4, "Evidence"),
+				new JudgeScore(award, idea, UUID.randomUUID(), behaviorId, 1, "Incomplete"));
+		assertThat(GetJudgeScoresUseCase.weightedPanelScore(scores, List.of(behavior, impact)))
+				.isEqualByComparingTo("8.20");
+	}
+
+	@Test
+	void summary_preserves_ties_and_marks_unscored_cases_without_a_rank() {
+		UUID award = UUID.randomUUID(), first = UUID.randomUUID(), second = UUID.randomUUID(), pending = UUID.randomUUID();
+		when(hackathonRepository.findById(award)).thenReturn(Optional.of(hackathon(Hackathon.JudgingMode.PANEL, 100)));
+		var a = mockIdea(first, award, null);
+		var b = mockIdea(second, award, null);
+		var c = mockIdea(pending, award, null);
+		when(a.getVotes()).thenReturn(4);
+		when(ideaRepository.findAllByHackathonId(award)).thenReturn(List.of(c, a, b));
+		when(judgeScoreRepository.findAllByHackathonId(award)).thenReturn(List.of(
+				new JudgeScore(award, first, UUID.randomUUID(), null, 8, null),
+				new JudgeScore(award, second, UUID.randomUUID(), null, 8, null)));
+		var result = useCase.getSummary(award);
+		assertThat(result).extracting(GetJudgeScoresUseCase.ScoreSummary::rank).containsExactly(1, 1, 0);
+		assertThat(result.get(2).panelScore()).isNull();
+		assertThat(result.get(2).judgeCount()).isZero();
+		assertThat(result.stream().filter(row -> row.ideaId().equals(first)).findFirst().orElseThrow().voteCount()).isEqualTo(4);
+	}
+
 }

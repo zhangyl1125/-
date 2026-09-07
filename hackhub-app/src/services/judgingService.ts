@@ -88,6 +88,18 @@ export class JudgingService {
     return api.post(`/api/v1/hackathons/${hackathonId}/judging/scores`, input)
   }
 
+  static async submitEvaluation(hackathonId: string, input: {
+    ideaId: string
+    scores: { criterionId: string; score: number }[]
+    comment?: string
+  }): Promise<JudgeScore[]> {
+    return api.post(`/api/v1/hackathons/${hackathonId}/judging/evaluations`, input)
+  }
+
+  static async getAllScores(hackathonId: string): Promise<JudgeScore[]> {
+    return api.get(`/api/v1/hackathons/${hackathonId}/judging/scores/all`)
+  }
+
   static async getMyScores(hackathonId: string): Promise<JudgeScore[]> {
     return api.get(`/api/v1/hackathons/${hackathonId}/judging/scores`)
   }

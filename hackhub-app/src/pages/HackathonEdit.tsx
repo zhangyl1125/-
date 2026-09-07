@@ -21,7 +21,6 @@ import {
   IconArrowLeft,
   IconDeviceFloppy,
   IconCalendar,
-  IconUsers,
   IconTarget,
   IconAlertCircle,
   IconUpload,
@@ -30,6 +29,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useForm } from '@mantine/form'
 import { useAuthStore } from '../store/authStore'
+import { HackathonService } from '../services/hackathonService'
 import { useHackathonStore } from '../store/hackathonStore'
 import { PermissionService } from '../utils/permissions'
 import { notifications } from '@mantine/notifications'
@@ -37,7 +37,7 @@ import { notifications } from '@mantine/notifications'
 // Helper function to get suggested status based on dates
 const getSuggestedStatus = (startDate: Date, endDate: Date, currentStatus: string): 'draft' | 'open' | 'running' | 'completed' => {
   const now = new Date()
-  
+
   // For past hackathons, be more flexible with suggestions
   if (endDate <= now) {
     return 'completed'
@@ -57,10 +57,10 @@ const getStatusOptions = (startDate: Date, endDate: Date, currentStatus: string)
 
   // Draft is always available
   options.push({ value: 'draft', label: '📝 Draft - Not visible to participants' })
-  
+
   // For past hackathons, allow all statuses for flexibility
   const isPastHackathon = endDate <= now
-  
+
   if (isPastHackathon) {
     // Allow all statuses for past hackathons
     options.push({ value: 'open', label: '🚀 Open - Registration available (archived)' })
@@ -72,12 +72,12 @@ const getStatusOptions = (startDate: Date, endDate: Date, currentStatus: string)
     if (endDate > now) {
       options.push({ value: 'open', label: '🚀 Open - Registration available' })
     }
-    
+
     // Running is available if past start date and before end date
     if (startDate <= now && endDate > now) {
       options.push({ value: 'running', label: '⚡ Running - Event in progress' })
     }
-    
+
     // Completed is available if past end date or manually set
     if (endDate <= now || currentStatus === 'completed') {
       options.push({ value: 'completed', label: '✅ Completed - Event finished' })
@@ -133,7 +133,7 @@ export function HackathonEdit() {
       description: (value) => (value.length < 10 ? 'Description must be at least 10 characters' : null),
       // Allow past dates for hackathons (removed past date restriction)
       start_date: () => null,
-      end_date: (value, values) => 
+      end_date: (value, values) =>
         value <= values.start_date ? 'End date must be after start date' : null,
       max_team_size: (value) => (value < 1 || value > 10 ? 'Team size must be between 1 and 10' : null),
       allowed_participants: (value) => (value < 1 ? 'Must allow at least 1 participant' : null),
@@ -141,7 +141,7 @@ export function HackathonEdit() {
         const now = new Date()
         const startDate = values.start_date instanceof Date ? values.start_date : new Date(values.start_date)
         const endDate = values.end_date instanceof Date ? values.end_date : new Date(values.end_date)
-        
+
         // Allow more flexible status transitions for past hackathons
         if (value === 'running' && startDate > now) {
           return 'Cannot set status to "Running" before the start date'
@@ -165,11 +165,11 @@ export function HackathonEdit() {
 
       setLoading(true)
       try {
-        // Find hackathon in store
-        const foundHackathon = hackathons.find(h => h.id === id)
+        // Direct links and refreshes must work before the shared store has loaded.
+        const foundHackathon = hackathons.find(h => h.id === id) ?? await HackathonService.getHackathon(id)
         if (!foundHackathon) {
           notifications.show({
-            title: 'Hackathon Not Found',
+            title: 'Award campaign not found',
             message: 'The hackathon you are trying to edit could not be found.',
             color: 'red',
           })
@@ -189,7 +189,7 @@ export function HackathonEdit() {
         }
 
         setHackathon(foundHackathon)
-        
+
         // Populate form with hackathon data
         form.setValues({
           title: foundHackathon.title || '',
@@ -230,7 +230,7 @@ export function HackathonEdit() {
       // Convert dates to ISO strings, ensuring they're valid Date objects
       const startDate = values.start_date instanceof Date ? values.start_date : new Date(values.start_date)
       const endDate = values.end_date instanceof Date ? values.end_date : new Date(values.end_date)
-      
+
       const updatedHackathon = {
         title: values.title,
         description: values.description,
@@ -248,7 +248,7 @@ export function HackathonEdit() {
       await updateHackathon(hackathon.id, updatedHackathon)
 
       // Show success notification with status change info
-      let message = 'Hackathon has been updated successfully.'
+      let message = 'Award campaign updated successfully.'
       if (statusChanged) {
         const statusLabels = {
           'draft': 'Draft (not visible)',
@@ -279,14 +279,14 @@ export function HackathonEdit() {
   }
 
   const availableTags = [
-    'AI/ML', 'Blockchain', 'IoT', 'FinTech', 'HealthTech', 'EdTech', 
+    'AI/ML', 'Blockchain', 'IoT', 'FinTech', 'HealthTech', 'EdTech',
     'Gaming', 'Mobile', 'Web', 'DevOps', 'Security', 'Data Science',
     'AR/VR', 'Sustainability', 'Social Impact', 'Hardware'
   ]
 
   if (loading) {
     return (
-      <Container size="lg" py="xl">
+      <Container className="dp-page" size="lg" py="xl">
         <LoadingOverlay visible />
         <div style={{ height: '400px' }} />
       </Container>
@@ -295,10 +295,10 @@ export function HackathonEdit() {
 
   if (!hackathon) {
     return (
-      <Container size="lg" py="xl">
+      <Container className="dp-page" size="lg" py="xl">
         <Alert
           icon={<IconAlertCircle size={16} />}
-          title="Hackathon Not Found"
+          title="Award campaign not found"
           color="red"
         >
           The hackathon you are trying to edit could not be found.
@@ -308,7 +308,7 @@ export function HackathonEdit() {
   }
 
   return (
-    <Container size="lg" py="xl">
+    <Container className="dp-page" size="lg" py="xl">
       <Stack gap="xl">
         {/* Header */}
         <div>
@@ -318,15 +318,15 @@ export function HackathonEdit() {
               leftSection={<IconArrowLeft size={16} />}
               onClick={() => navigate(`/hackathons/${id}`)}
             >
-              Back to Hackathon
+              Back to award campaign
             </Button>
           </Group>
-          
+
           <Title order={1} mb="xs">
-            Edit Hackathon
+            Edit award campaign
           </Title>
           <Text c="dimmed" size="lg">
-            Update your hackathon details and settings
+            Update your award campaign details and settings
           </Text>
         </div>
 
@@ -338,15 +338,15 @@ export function HackathonEdit() {
               <Title order={3} mb="md">Basic Information</Title>
               <Stack gap="md">
                 <TextInput
-                  label="Hackathon Title"
-                  placeholder="Enter hackathon title"
+                  label="Award campaign title"
+                  placeholder="Enter award campaign title"
                   required
                   {...form.getInputProps('title')}
                 />
 
                 <Textarea
                   label="Description"
-                  placeholder="Describe your hackathon..."
+                  placeholder="Describe your award campaign..."
                   required
                   minRows={4}
                   {...form.getInputProps('description')}
@@ -374,10 +374,10 @@ export function HackathonEdit() {
                 </Grid>
 
                 <Select
-                  label="Hackathon Status"
+                  label="Campaign status"
                   placeholder="Select current status"
                   required
-                  description="Change the status to control access and visibility"
+                  
                   data={getStatusOptions(form.values.start_date, form.values.end_date, form.values.status)}
                   {...form.getInputProps('status')}
                 />
@@ -392,8 +392,8 @@ export function HackathonEdit() {
                           <Text size="sm">
                             💡 Suggested status: <strong>{suggested}</strong> (based on dates)
                           </Text>
-                          <Button 
-                            size="xs" 
+                          <Button
+                            size="xs"
                             variant="light"
                             onClick={() => form.setFieldValue('status', suggested)}
                           >
@@ -408,7 +408,7 @@ export function HackathonEdit() {
 
                 <FileInput
                   label="Banner Image"
-                  placeholder="Upload hackathon banner"
+                  placeholder="Upload campaign banner"
                   leftSection={<IconUpload size={16} />}
                   accept="image/*"
                 />
@@ -422,13 +422,13 @@ export function HackathonEdit() {
                 <Group>
                   <Text fw={500} c={form.values.status === 'draft' ? 'blue' : 'dimmed'}>📝 Draft:</Text>
                   <Text size="sm" c={form.values.status === 'draft' ? undefined : 'dimmed'}>
-                    Hackathon is not visible to participants. Use this for preparation.
+                    The campaign is not visible to participants. Use this for preparation.
                   </Text>
                 </Group>
                 <Group>
                   <Text fw={500} c={form.values.status === 'open' ? 'blue' : 'dimmed'}>🚀 Open:</Text>
                   <Text size="sm" c={form.values.status === 'open' ? undefined : 'dimmed'}>
-                    Registration is available. Participants can view and join the hackathon.
+                    Registration is available. Participants can view and join the campaign.
                   </Text>
                 </Group>
                 <Group>
@@ -451,17 +451,7 @@ export function HackathonEdit() {
               <Title order={3} mb="md">Participation Settings</Title>
               <Stack gap="md">
                 <Grid>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
-                    <NumberInput
-                      label="Maximum Team Size"
-                      placeholder="Enter max team size"
-                      min={1}
-                      max={10}
-                      required
-                      leftSection={<IconUsers size={16} />}
-                      {...form.getInputProps('max_team_size')}
-                    />
-                  </Grid.Col>
+
                   <Grid.Col span={{ base: 12, md: 6 }}>
                     <NumberInput
                       label="Maximum Participants"
@@ -490,7 +480,7 @@ export function HackathonEdit() {
                 label="Tags"
                 placeholder="Select relevant tags"
                 data={availableTags}
-                description="Help participants find your hackathon"
+                
                 {...form.getInputProps('tags')}
               />
             </Card>
@@ -542,9 +532,9 @@ export function HackathonEdit() {
               <Title order={3} mb="md">Rules & Guidelines</Title>
               <Textarea
                 label="Rules"
-                placeholder="Enter hackathon rules and guidelines..."
+                placeholder="Enter award guidelines and guidelines..."
                 minRows={6}
-                description="Use markdown for formatting"
+                
                 {...form.getInputProps('rules')}
               />
             </Card>

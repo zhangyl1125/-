@@ -24,11 +24,15 @@ export interface Idea {
 }
 
 export interface ProjectAttachment {
-  type: 'screenshot' | 'repository' | 'demo' | 'video' | 'document' | 'link'
+  type: 'nomination' | 'screenshot' | 'repository' | 'demo' | 'video' | 'document' | 'link'
   url: string
   name: string
   description?: string
   storageKey?: string
+  nomineeUserId?: string
+  nomineeOrgCode?: string
+  nomineePosition?: string
+  nominatingHead?: string
 }
 
 export interface CreateIdeaInput {
@@ -38,6 +42,10 @@ export interface CreateIdeaInput {
   teamId?: string
   category: string
   tags?: string[]
+  status?: Idea['status']
+  repositoryUrl?: string | null
+  demoUrl?: string | null
+  projectAttachments?: ProjectAttachment[] | null
 }
 
 export interface UpdateIdeaInput {
@@ -105,7 +113,13 @@ export class IdeaService {
   }
 
   static async createIdea(data: CreateIdeaInput): Promise<Idea> {
-    return normalizeIdea(await api.post<IdeaResponse>(`/api/v1/hackathons/${data.hackathonId}/ideas`, data))
+    const payload = {
+      ...data,
+      ...(data.projectAttachments !== undefined
+        ? { projectAttachments: JSON.stringify(data.projectAttachments ?? []) }
+        : {}),
+    }
+    return normalizeIdea(await api.post<IdeaResponse>(`/api/v1/hackathons/${data.hackathonId}/ideas`, payload))
   }
 
   static async updateIdea(id: string, updates: UpdateIdeaInput): Promise<Idea> {

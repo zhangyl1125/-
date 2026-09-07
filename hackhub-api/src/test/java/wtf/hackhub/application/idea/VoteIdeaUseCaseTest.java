@@ -27,6 +27,9 @@ import static org.mockito.Mockito.*;
 class VoteIdeaUseCaseTest {
 
 	@Mock
+	wtf.hackhub.infrastructure.persistence.IdeaMutationLock mutationLock;
+
+	@Mock
 	IdeaRepository ideaRepository;
 	@Mock
 	IdeaVoteRepository voteRepository;
@@ -38,7 +41,11 @@ class VoteIdeaUseCaseTest {
 	VoteIdeaUseCase useCase;
 
 	private Idea idea(UUID id) {
-		return new Idea("Title", "Desc", UUID.randomUUID(), null, UUID.randomUUID(), "tech");
+		return idea("Customer Values");
+	}
+
+	private Idea idea(String category) {
+		return new Idea("Title", "Desc", UUID.randomUUID(), null, UUID.randomUUID(), category);
 	}
 
 	private Profile profile(String name) {
@@ -109,7 +116,7 @@ class VoteIdeaUseCaseTest {
 	}
 
 	@Test
-	void rejects_fifth_vote_in_same_hackathon() {
+	void rejects_fifth_vote_in_same_award_category() {
 		UUID ideaId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
 		Idea idea = idea(ideaId);
@@ -118,13 +125,39 @@ class VoteIdeaUseCaseTest {
 		when(profileRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(profile("WANG Alice")));
 		when(participantRepository.findAllByNormalizedName("alicewang"))
 				.thenReturn(List.of(new VotingParticipant("1", "BD/SWD-ARC2", "WANG Alice", "alicewang")));
-		when(voteRepository.findAllByUserIdAndHackathonId(userId, idea.getHackathonId()))
-				.thenReturn(List.of(new IdeaVote(UUID.randomUUID(), userId), new IdeaVote(UUID.randomUUID(), userId),
-						new IdeaVote(UUID.randomUUID(), userId), new IdeaVote(UUID.randomUUID(), userId)));
+		List<IdeaVote> existingVotes = List.of(new IdeaVote(UUID.randomUUID(), userId),
+				new IdeaVote(UUID.randomUUID(), userId), new IdeaVote(UUID.randomUUID(), userId),
+				new IdeaVote(UUID.randomUUID(), userId));
+		when(voteRepository.findAllByUserIdAndHackathonId(userId, idea.getHackathonId())).thenReturn(existingVotes);
+		for (IdeaVote vote : existingVotes) {
+			when(ideaRepository.findById(vote.getIdeaId())).thenReturn(Optional.of(idea("Customer Values")));
+		}
 
 		assertThatThrownBy(() -> useCase.execute(ideaId, userId))
-				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class).hasMessageContaining("at most 4");
+				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class)
+				.hasMessageContaining("at most 4").hasMessageContaining("award category");
 		verify(voteRepository, never()).save(any());
+	}
+
+	@Test
+	void votes_in_another_award_category_do_not_consume_the_track_quota() {
+		UUID ideaId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		Idea target = idea("Customer Values");
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(target));
+		when(voteRepository.findByIdeaIdAndUserId(ideaId, userId)).thenReturn(Optional.empty());
+		allowVoting(target, userId, "BD/SWD-ARC2", "BD/TOA-GTC6");
+		List<IdeaVote> existingVotes = List.of(new IdeaVote(UUID.randomUUID(), userId),
+				new IdeaVote(UUID.randomUUID(), userId), new IdeaVote(UUID.randomUUID(), userId),
+				new IdeaVote(UUID.randomUUID(), userId));
+		when(voteRepository.findAllByUserIdAndHackathonId(userId, target.getHackathonId())).thenReturn(existingVotes);
+		for (IdeaVote vote : existingVotes) {
+			when(ideaRepository.findById(vote.getIdeaId())).thenReturn(Optional.of(idea("Innovation Breakthrough")));
+		}
+		when(voteRepository.countByIdeaId(ideaId)).thenReturn(1L);
+
+		assertThat(useCase.execute(ideaId, userId).voted()).isTrue();
+		verify(voteRepository).save(any(IdeaVote.class));
 	}
 
 	@Test
@@ -161,9 +194,12 @@ class VoteIdeaUseCaseTest {
 		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(target));
 		when(voteRepository.findByIdeaIdAndUserId(ideaId, userId)).thenReturn(Optional.empty());
 		allowVoting(target, userId, "BD/SWD-ARC2", "BD/TOA-GTC6");
-		when(voteRepository.findAllByUserIdAndHackathonId(userId, target.getHackathonId()))
-				.thenReturn(List.of(new IdeaVote(UUID.randomUUID(), userId), new IdeaVote(UUID.randomUUID(), userId),
-						new IdeaVote(UUID.randomUUID(), userId)));
+		List<IdeaVote> existingVotes = List.of(new IdeaVote(UUID.randomUUID(), userId),
+				new IdeaVote(UUID.randomUUID(), userId), new IdeaVote(UUID.randomUUID(), userId));
+		when(voteRepository.findAllByUserIdAndHackathonId(userId, target.getHackathonId())).thenReturn(existingVotes);
+		for (IdeaVote vote : existingVotes) {
+			when(ideaRepository.findById(vote.getIdeaId())).thenReturn(Optional.of(idea("Customer Values")));
+		}
 		when(voteRepository.countByIdeaId(ideaId)).thenReturn(1L);
 
 		assertThat(useCase.execute(ideaId, userId).voted()).isTrue();
@@ -233,8 +269,60 @@ class VoteIdeaUseCaseTest {
 
 	@Test
 	void extracts_department_prefix_before_hyphen() {
+		assertThat(VoteIdeaUseCase.departmentCode("BD/DPA-SRE3")).isEqualTo("BD/DPA");
+		assertThat(VoteIdeaUseCase.departmentCode("BD/DPA-XYZ")).isEqualTo("BD/DPA");
+		assertThat(VoteIdeaUseCase.departmentCode("BD/BA-AP")).isEqualTo("BD/BA");
 		assertThat(VoteIdeaUseCase.departmentCode("BD/SWD-ARC2")).isEqualTo("BD/SWD");
 		assertThat(VoteIdeaUseCase.departmentCode("BD/RMO")).isEqualTo("BD/RMO");
 		assertThat(VoteIdeaUseCase.normalizeIdentity("Mr. 朱一/ZHU Yi")).isEqualTo("yizhu");
 	}
+	@Test
+	void resolves_department_from_nominee_instead_of_nominator() {
+		UUID ideaId = UUID.randomUUID(), userId = UUID.randomUUID(), nomineeId = UUID.randomUUID();
+		Idea idea = idea("Customer Values");
+		idea.update("Title", "Desc", "Customer Values", List.of(), Idea.Status.DRAFT, null, null,
+				"[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nomineeId + "\"}]");
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(idea));
+		when(profileRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(profile("WANG Alice")));
+		when(profileRepository.findById(nomineeId)).thenReturn(Optional.of(profile("CHEN Bob")));
+		when(participantRepository.findAllByNormalizedName("alicewang"))
+				.thenReturn(List.of(new VotingParticipant("1", "BD/DPA-SRE3", "WANG Alice", "alicewang")));
+		when(participantRepository.findAllByNormalizedName("bobchen"))
+				.thenReturn(List.of(new VotingParticipant("2", "BD/BA-AP", "CHEN Bob", "bobchen")));
+		assertThat(useCase.execute(ideaId, userId).voted()).isTrue();
+		verify(profileRepository, never()).findById(idea.getCreatedBy());
+	}
+
+	@Test
+	void permits_two_own_department_votes_before_outside_votes() {
+		UUID ideaId = UUID.randomUUID(), userId = UUID.randomUUID();
+		Idea target = idea("Customer Values"), previous = idea("Customer Values");
+		IdeaVote firstVote = new IdeaVote(UUID.randomUUID(), userId);
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(target));
+		allowVoting(target, userId, "BD/DPA-SRE3", "BD/DPA-XYZ");
+		when(voteRepository.findAllByUserIdAndHackathonId(userId, target.getHackathonId())).thenReturn(List.of(firstVote));
+		when(ideaRepository.findById(firstVote.getIdeaId())).thenReturn(Optional.of(previous));
+		when(profileRepository.findById(previous.getCreatedBy())).thenReturn(Optional.of(profile("CHEN Bob")));
+		assertThat(useCase.execute(ideaId, userId).voted()).isTrue();
+		var ordered = inOrder(mutationLock, profileRepository, voteRepository);
+		ordered.verify(mutationLock).acquire(ideaId);
+		ordered.verify(profileRepository).findByIdForUpdate(userId);
+		ordered.verify(voteRepository).findByIdeaIdAndUserId(ideaId, userId);
+	}
+
+	@Test
+	void account_email_department_takes_priority_over_edited_display_name() {
+		UUID ideaId = UUID.randomUUID(), userId = UUID.randomUUID();
+		Idea target = idea("Customer Values");
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(target));
+		when(profileRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(new Profile("wang.alice@bosch.com", "Other Person", "hash")));
+		when(participantRepository.findAllByNormalizedName("alicewang"))
+				.thenReturn(List.of(new VotingParticipant("1", "BD/DPA-SRE3", "WANG Alice", "alicewang")));
+		when(profileRepository.findById(target.getCreatedBy())).thenReturn(Optional.of(profile("CHEN Bob")));
+		when(participantRepository.findAllByNormalizedName("bobchen"))
+				.thenReturn(List.of(new VotingParticipant("2", "BD/BA-AP", "CHEN Bob", "bobchen")));
+		assertThat(useCase.execute(ideaId, userId).voted()).isTrue();
+		verify(participantRepository, never()).findAllByNormalizedName("otherperson");
+	}
+
 }

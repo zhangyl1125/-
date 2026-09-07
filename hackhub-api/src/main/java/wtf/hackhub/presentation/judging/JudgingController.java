@@ -7,15 +7,17 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import wtf.hackhub.application.judging.*;
 import wtf.hackhub.domain.JudgeScore;
-import wtf.hackhub.infrastructure.persistence.organization.OrganizationMemberRepository;
 import wtf.hackhub.infrastructure.persistence.hackathon.HackathonRepository;
+import wtf.hackhub.infrastructure.persistence.organization.OrganizationMemberRepository;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -97,8 +99,8 @@ public class JudgingController {
 	@Operation(summary = "Get scores for a hackathon — judges see their own, managers see all")
 	@ApiResponse(responseCode = "200", description = "Success")
 	@GetMapping("/scores")
-	public List<ScoreResponse> getScores(@PathVariable UUID hackathonId, @AuthenticationPrincipal UUID userId) {
-		boolean isManager = isManagerOrOwner(hackathonId, userId);
+	public List<ScoreResponse> getScores(@PathVariable UUID hackathonId, @AuthenticationPrincipal UUID userId, Authentication authentication) {
+		boolean isManager = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")) || isManagerOrOwner(hackathonId, userId);
 		return getScoresUseCase.getScoresForHackathon(hackathonId, userId, isManager).stream().map(ScoreResponse::from)
 				.toList();
 	}
@@ -106,13 +108,32 @@ public class JudgingController {
 	@Operation(summary = "Get blended score summary per idea (leaderboard view)")
 	@ApiResponse(responseCode = "200", description = "Success")
 	@GetMapping("/scores/summary")
+	@PreAuthorize("hasRole('ADMIN') or @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication)")
 	public List<ScoreSummaryResponse> getSummary(@PathVariable UUID hackathonId) {
 		return getScoresUseCase.getSummary(hackathonId).stream().map(s -> new ScoreSummaryResponse(s.ideaId(),
-				s.ideaTitle(), s.panelScore(), s.communityScore(), s.blendedScore(), s.rank())).toList();
+				s.ideaTitle(), s.panelScore(), s.communityScore(), s.blendedScore(), s.rank(), s.judgeCount(), s.voteCount())).toList();
 	}
+
+	@PostMapping("/evaluations")
+	public List<ScoreResponse> submitEvaluation(@PathVariable UUID hackathonId,
+			@Valid @RequestBody EvaluationRequest req, @AuthenticationPrincipal UUID userId) {
+		return submitScoreUseCase.submitEvaluation(hackathonId, req.ideaId(), userId,
+				req.scores().stream().map(s -> new SubmitJudgeScoreUseCase.CriterionScore(s.criterionId(), s.score())).toList(),
+				req.comment()).stream().map(ScoreResponse::from).toList();
+	}
+
+	@GetMapping("/scores/all")
+	@PreAuthorize("hasRole('ADMIN') or @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication)")
+	public List<ScoreResponse> getAllScores(@PathVariable UUID hackathonId, @AuthenticationPrincipal UUID userId) {
+		return getScoresUseCase.getScoresForHackathon(hackathonId, userId, true).stream().map(ScoreResponse::from).toList();
+	}
+
+	public record EvaluationCriterion(@NotNull UUID criterionId, @NotNull @Min(1) @Max(10) Integer score) {}
+	public record EvaluationRequest(@NotNull UUID ideaId, @NotEmpty List<@NotNull @Valid EvaluationCriterion> scores, String comment) {}
 
 	private boolean isManagerOrOwner(UUID hackathonId, UUID userId) {
 		return hackathonRepository.findById(hackathonId).map(h -> {
+			if (userId.equals(h.getCreatedBy())) return true;
 			if (h.getOrganizationId() == null)
 				return false;
 			return memberRepository.findByOrganizationIdAndUserId(h.getOrganizationId(), userId)
@@ -144,6 +165,6 @@ public class JudgingController {
 	}
 
 	public record ScoreSummaryResponse(UUID ideaId, String ideaTitle, BigDecimal panelScore, BigDecimal communityScore,
-			BigDecimal blendedScore, int rank) {
+			BigDecimal blendedScore, int rank, int judgeCount, int voteCount) {
 	}
 }

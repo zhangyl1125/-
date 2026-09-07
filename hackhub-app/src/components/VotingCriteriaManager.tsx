@@ -23,6 +23,7 @@ import {
   IconGripVertical,
   IconAlertCircle,
   IconCheck,
+  IconWand,
 } from '@tabler/icons-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useForm } from '@mantine/form'
@@ -30,6 +31,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { VotingService } from '../services/votingService'
 import type { VotingCriteria } from '../services/votingService'
+import { DIGITAL_PIONEER_RUBRIC } from '../config/digitalPioneer'
 
 interface VotingCriteriaManagerProps {
   hackathonId: string
@@ -45,6 +47,8 @@ interface CriteriaForm {
 
 export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteriaManagerProps) {
   const [criteria, setCriteria] = useState<VotingCriteria[]>([])
+  const [templateNeedsReview, setTemplateNeedsReview] = useState(false)
+  const [applyingTemplate, setApplyingTemplate] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editingCriteria, setEditingCriteria] = useState<VotingCriteria | null>(null)
   const [opened, { open, close }] = useDisclosure(false)
@@ -202,11 +206,43 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
     open()
   }
 
+  const applyDigitalPioneerTemplate = async () => {
+    if (applyingTemplate) return
+    setApplyingTemplate(true)
+    try {
+      for (const [index, rubric] of DIGITAL_PIONEER_RUBRIC.entries()) {
+        await VotingService.createCriteria(hackathonId, {
+          name: rubric.name,
+          description: rubric.description,
+          weight: rubric.weight,
+          displayOrder: index + 1,
+        })
+      }
+      await loadCriteria()
+      notifications.show({
+        title: 'Evaluation form ready',
+        message: 'Behavior Demonstration 70% and Business Impact 30% were added.',
+        color: 'teal',
+      })
+    } catch (error) {
+      setTemplateNeedsReview(true)
+      console.error('Failed to apply Digital Pioneer template:', error)
+      notifications.show({
+        title: 'Template not applied',
+        message: 'Some criteria may have been saved. Review the refreshed list before adding any missing criterion.',
+        color: 'red',
+      })
+      await loadCriteria()
+    } finally {
+      setApplyingTemplate(false)
+    }
+  }
+
   if (loading) {
     return (
       <Card withBorder p="lg">
         <Stack gap="md">
-          <Title order={3}>Voting Criteria</Title>
+          <Title order={3}>Committee evaluation criteria</Title>
           <Text c="dimmed">Loading...</Text>
         </Stack>
       </Card>
@@ -219,15 +255,29 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
         <Stack gap="md">
           <Group justify="space-between">
             <div>
-              <Title order={3}>Voting Criteria</Title>
+              <Title order={3}>Committee evaluation criteria</Title>
               <Text c="dimmed" size="sm">
-                Define how participants will evaluate team ideas
+                Evaluate individual nominees against the official award standard
               </Text>
             </div>
             {isManager && (
-              <Button leftSection={<IconPlus size={16} />} onClick={handleAddNew}>
-                Add Criteria
-              </Button>
+              <Group gap="xs">
+                {criteria.length === 0 ? (
+                  <Button
+                    variant="light"
+                    color="cyan"
+                    leftSection={<IconWand size={16} />}
+                    disabled={templateNeedsReview}
+                    loading={applyingTemplate}
+                    onClick={() => void applyDigitalPioneerTemplate()}
+                  >
+                    Apply 2026 DPA template
+                  </Button>
+                ) : null}
+                <Button leftSection={<IconPlus size={16} />} onClick={handleAddNew}>
+                  Add Criteria
+                </Button>
+              </Group>
             )}
           </Group>
 
@@ -340,11 +390,15 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
             <>
               <Divider />
               <Stack gap="xs">
-                <Text size="sm" fw={500}>Scoring Scale:</Text>
-                <Text size="xs" c="dimmed">
-                  Each criteria will be scored from 1-10, where:
-                  1-3 = Poor, 4-6 = Average, 7-8 = Good, 9-10 = Excellent
-                </Text>
+                <Text size="sm" fw={500}>Official evaluation scale · 1–10</Text>
+                {DIGITAL_PIONEER_RUBRIC.map((rubric) => (
+                  <div key={rubric.key}>
+                    <Text size="sm" fw={600}>{rubric.name} · {rubric.weight}%</Text>
+                    {rubric.levels.map((level) => <Text key={level.range} size="xs" c="dimmed" mt={4}>
+                      {level.range === '≤ 4' ? '1–4' : level.range} · {level.label}: {level.detail}
+                    </Text>)}
+                  </div>
+                ))}
               </Stack>
             </>
           )}
@@ -359,7 +413,7 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
           setEditingCriteria(null)
           form.reset()
         }}
-        title={editingCriteria ? 'Edit Voting Criteria' : 'Add Voting Criteria'}
+        title={editingCriteria ? 'Edit Committee evaluation criteria' : 'Add Committee evaluation criteria'}
         size="md"
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>

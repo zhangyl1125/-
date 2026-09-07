@@ -20,8 +20,7 @@ import {
   Image,
   FileInput,
   Textarea,
-  Divider,
-  Loader,
+  UnstyledButton,
 } from '@mantine/core'
 import {
   IconTrophy,
@@ -30,34 +29,43 @@ import {
   IconBrandGithub,
   IconWorldWww,
   IconSearch,
-  IconUsers,
+  IconUser,
   IconExternalLink,
   IconTool,
   IconUpload,
-  IconMessageCircle,
   IconGavel,
+  IconArrowRight,
+  IconInfoCircle,
+  IconPhoto,
+  IconCheck,
 } from '@tabler/icons-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
-import { useRealtime } from '../hooks/useRealtime'
 import { notifications } from '@mantine/notifications'
-import { ApiError } from '../lib/apiClient'
+import { getAllPages } from '../services/pagination'
+import { api, ApiError } from '../lib/apiClient'
 import { HackathonService } from '../services/hackathonService'
 import type { Hackathon } from '../services/hackathonService'
 import { IdeaService } from '../services/ideaService'
+import { OrganizationService } from '../services/organizationService'
 import { ProfileService } from '../services/profileService'
 import { StorageService } from '../services/storageService'
 import { TeamService } from '../services/teamService'
-import type { Team } from '../services/teamService'
-import type { Comment } from '../services/ideaService'
 import { JudgingService } from '../services/judgingService'
+import {
+  DIGITAL_PIONEER_TRACKS,
+  normalizeDigitalPioneerTrack,
+} from '../config/digitalPioneer'
+import { AwardLens } from '../components/DigitalPioneer/AwardLens'
+import { NominationComments } from '../components/DigitalPioneer/NominationComments'
+import './DigitalPioneer.css'
 
 interface Project {
   id: string
   title: string
   description: string
-  team_name: string
+  nominee_name: string
   team_members: Array<{
     id: string
     name: string
@@ -65,7 +73,6 @@ interface Project {
     role?: string
   }>
   hackathon_id: string
-  hackathon_name: string
   category: string
   technologies: string[]
   github_url?: string
@@ -74,7 +81,6 @@ interface Project {
   images: string[]
   votes: number
   user_vote?: boolean
-  prize_position?: number
   status: 'draft' | 'submitted' | 'in-progress' | 'completed'
   created_at: string
   submission_date: string
@@ -84,108 +90,72 @@ interface ProjectFilters {
   search: string
   category: string
   technology: string
-  prizeOnly: boolean
 }
 
 interface ProjectUploadForm {
   hackathonId: string
-  teamId: string
-  teamName: string
+  nomineeUserId: string
+  nomineePosition: string
+  nominatingHead: string
   title: string
-  description: string
+  executiveSummary: string
+  achievementImpact: string
+  cultureDemonstration: string
   category: string
   technologies: string
   repositoryUrl: string
   demoUrl: string
 }
 
-interface ProjectComment extends Comment {
-  authorName: string
-}
-
-const PROJECT_TRACKS = [
-  {
-    value: 'AI & Intelligence',
-    label: 'AI & Intelligence',
-    description: 'AI models, intelligent assistants and automation',
-  },
-  {
-    value: 'Digital Transformation',
-    label: 'Digital Transformation',
-    description: 'Digital products, processes and efficiency improvements',
-  },
-  {
-    value: 'Green & Sustainability',
-    label: 'Green & Sustainability',
-    description: 'Low-carbon, circular economy and sustainable solutions',
-  },
-] as const
-
-function normalizeProjectTrack(category: string, technologies: string[]): string {
-  if (PROJECT_TRACKS.some((track) => track.value === category)) return category
-
-  const searchable = `${category} ${technologies.join(' ')}`.toLowerCase()
-  if (/sustain|green|climate|carbon|environment|low.?carbon/.test(searchable)) {
-    return PROJECT_TRACKS[2].value
-  }
-  if (/\bai\b|artificial intelligence|machine learning|developer|software/.test(searchable)) {
-    return PROJECT_TRACKS[0].value
-  }
-  return PROJECT_TRACKS[1].value
-}
-
-const CREATE_TEAM_VALUE = '__create_team__'
-
 const emptyUploadForm = (): ProjectUploadForm => ({
   hackathonId: '',
-  teamId: '',
-  teamName: '',
+  nomineeUserId: '',
+  nomineePosition: '',
+  nominatingHead: '',
   title: '',
-  description: '',
+  executiveSummary: '',
+  achievementImpact: '',
+  cultureDemonstration: '',
   category: '',
   technologies: '',
   repositoryUrl: '',
   demoUrl: '',
 })
 
-export function ProjectShowcase() {
+export function ProjectShowcase({ nominationMode = false }: { nominationMode?: boolean }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { isConnected } = useRealtime()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [modalOpened, setModalOpened] = useState(false)
-  const [uploadOpened, setUploadOpened] = useState(false)
+  const [nominees, setNominees] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [nomineeLoadError, setNomineeLoadError] = useState(false)
+  const [votingIds, setVotingIds] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
   const [hackathons, setHackathons] = useState<Hackathon[]>([])
-  const [userTeams, setUserTeams] = useState<Team[]>([])
   const [projectImage, setProjectImage] = useState<File | null>(null)
   const [uploadForm, setUploadForm] = useState<ProjectUploadForm>(emptyUploadForm)
-  const [comments, setComments] = useState<ProjectComment[]>([])
-  const [commentsLoading, setCommentsLoading] = useState(false)
-  const [commentContent, setCommentContent] = useState('')
-  const [commentSubmitting, setCommentSubmitting] = useState(false)
   const [assignedJudgeHackathons, setAssignedJudgeHackathons] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState<ProjectFilters>({
     search: '',
     category: '',
     technology: '',
-    prizeOnly: false,
   })
 
   const loadProjects = useCallback(async () => {
       setLoading(true)
       try {
-        const loadedHackathons = (await HackathonService.getHackathons(0, 100)).content
+        const loadedHackathons = await getAllPages((page) => HackathonService.getHackathons(page, 100))
         setHackathons(loadedHackathons)
+        const currentAward = loadedHackathons.find((award) => award.status === 'running') ?? loadedHackathons[0]
         setUploadForm((current) => current.hackathonId || loadedHackathons.length === 0
           ? current
-          : { ...current, hackathonId: loadedHackathons[0].id })
+          : { ...current, hackathonId: currentAward.id })
 
         const hackathonData = await Promise.all(loadedHackathons.map(async (hackathon) => {
           const [ideasPage, teams] = await Promise.all([
-            IdeaService.getIdeas(hackathon.id, 0, 100),
+            getAllPages((page) => IdeaService.getIdeas(hackathon.id, page, 100)),
             TeamService.getTeams(hackathon.id),
           ])
 
@@ -195,7 +165,7 @@ export function ProjectShowcase() {
           })))
           const membersByTeam = new Map(teamsWithMembers.map(({ team, members }) => [team.id, members]))
 
-          const projectList = await Promise.all(ideasPage.content.map(async (idea): Promise<Project> => {
+          const projectList = await Promise.all(ideasPage.map(async (idea): Promise<Project> => {
             const team = teams.find((candidate) => candidate.id === idea.teamId)
             const members = team ? membersByTeam.get(team.id) ?? [] : []
             const teamMembers = await Promise.all(members.map(async (member) => {
@@ -215,15 +185,18 @@ export function ProjectShowcase() {
                 .catch(() => attachment.url)
             }))
 
+            const creatorProfile = teamMembers.length > 0
+              ? null
+              : await ProfileService.getProfile(idea.createdBy).catch(() => null)
+
             return {
               id: idea.id,
               title: idea.title,
               description: idea.description,
-              team_name: team?.name ?? 'Individual',
+              nominee_name: idea.projectAttachments?.find((attachment) => attachment.type === 'nomination')?.name ?? teamMembers[0]?.name ?? creatorProfile?.name ?? team?.name ?? 'Individual Nominee',
               team_members: teamMembers,
               hackathon_id: hackathon.id,
-              hackathon_name: hackathon.title,
-              category: normalizeProjectTrack(idea.category, idea.tags ?? []),
+              category: normalizeDigitalPioneerTrack(idea.category, idea.tags ?? []),
               technologies: idea.tags ?? [],
               github_url: idea.repositoryUrl ?? undefined,
               demo_url: idea.demoUrl ?? undefined,
@@ -236,95 +209,105 @@ export function ProjectShowcase() {
             }
           }))
 
-          return {
-            projectList,
-            userTeams: teamsWithMembers
-              .filter(({ members }) => members.some((member) => member.userId === user?.id))
-              .map(({ team }) => team),
-          }
+          return { projectList }
         }))
         setProjects(hackathonData.flatMap(({ projectList }) => projectList))
-        setUserTeams(hackathonData.flatMap(({ userTeams: teams }) => teams))
       } catch (error) {
         console.error('Error loading projects:', error)
         notifications.show({
-          title: 'Error',
-          message: 'Failed to load projects',
+          title: 'Unable to load nominations',
+          message: 'Refresh the page to try again.',
           color: 'red',
         })
       } finally {
         setLoading(false)
       }
-  }, [user?.id])
+  }, [])
 
   useEffect(() => {
     void loadProjects()
   }, [loadProjects])
 
-  const openUploadModal = (track?: string) => {
-    const hackathonId = uploadForm.hackathonId || hackathons[0]?.id || ''
-    const firstTeam = userTeams.find((team) => team.hackathonId === hackathonId)
-    setUploadForm((current) => ({
-      ...current,
-      hackathonId,
-      teamId: current.teamId || firstTeam?.id || CREATE_TEAM_VALUE,
-      category: track || current.category || PROJECT_TRACKS[0].value,
-    }))
-    setUploadOpened(true)
-  }
+  useEffect(() => {
+    if (!nominationMode || !user || user.role === 'participant') return
+    let cancelled = false
+    const loadNominees = async () => {
+      try {
+        const candidates = user.role === 'admin'
+          ? await getAllPages((page) => api.get<{ content: Array<{ id: string; name: string; email: string }>; totalPages?: number }>(`/api/v1/admin/users?page=${page}&size=200&sort=name,asc`))
+          : (await Promise.all((await OrganizationService.getMyOrganizations()).map(async (org) =>
+              (await OrganizationService.getMembers(org.id)).map((member) => ({
+                id: member.userId, name: member.name ?? member.email ?? member.userId, email: member.email ?? '',
+              }))
+            ))).flat()
+        if (!cancelled) setNominees([...new Map([{ id: user.id, name: user.name, email: user.email }, ...candidates].map((candidate) => [candidate.id, candidate])).values()])
+      } catch {
+        if (!cancelled) setNomineeLoadError(true)
+      }
+    }
+    void loadNominees()
+    return () => { cancelled = true }
+  }, [nominationMode, user])
 
   const handleProjectUpload = async () => {
-    const creatingTeam = uploadForm.teamId === CREATE_TEAM_VALUE
-    if (!uploadForm.hackathonId || !uploadForm.title.trim() || !uploadForm.description.trim()
-      || !uploadForm.category.trim() || !projectImage
-      || (creatingTeam ? !uploadForm.teamName.trim() : !uploadForm.teamId)) {
+    if (!user || uploading) return
+    if (!uploadForm.hackathonId || !uploadForm.title.trim() || !uploadForm.executiveSummary.trim()
+      || !uploadForm.achievementImpact.trim() || !uploadForm.cultureDemonstration.trim()
+      || !uploadForm.category.trim() || !projectImage) {
       notifications.show({
         title: 'Missing Information',
-        message: 'Complete all required fields and select a project image',
+        message: 'Complete all required fields and select a nominee photo.',
         color: 'orange',
       })
       return
     }
 
+    const nomineeUserId = uploadForm.nomineeUserId || user!.id
+    const nomineeName = nominees.find((candidate) => candidate.id === nomineeUserId)?.name ?? user!.name
     setUploading(true)
     try {
       const technologies = uploadForm.technologies
         .split(',')
         .map((technology) => technology.trim())
         .filter(Boolean)
-      const team = creatingTeam
-        ? await TeamService.createTeam({
-            name: uploadForm.teamName.trim(),
-            description: uploadForm.description.trim(),
+      const description = [
+        `Executive Summary\n${uploadForm.executiveSummary.trim()}`,
+        `Core Achievement & Business Impact\n${uploadForm.achievementImpact.trim()}`,
+        `High-Performance Culture Demonstration\n${uploadForm.cultureDemonstration.trim()}`,
+      ].join('\n\n')
+      const personalTeamName = `${user?.name ?? 'Digital Pioneer'} nomination`
+      // Ideas still accept a teamId in the existing API. For this individual award,
+      // the team record is only a compatibility container and is never exposed in the UI.
+      const team = await TeamService.getOrCreateNominationTeam({
+            name: personalTeamName,
+            description,
             hackathonId: uploadForm.hackathonId,
             skills: technologies,
-          })
-        : userTeams.find((candidate) => candidate.id === uploadForm.teamId)
-
-      if (!team) throw new Error('Please select a team')
+          }, user.id)
 
       const uploadedImage = await StorageService.uploadFile(
         projectImage,
         'project-attachments',
         `projects/${team.id}`
       )
-      const idea = await IdeaService.createIdea({
+      await IdeaService.createIdea({
         title: uploadForm.title.trim(),
-        description: uploadForm.description.trim(),
+        description,
         hackathonId: uploadForm.hackathonId,
         teamId: team.id,
-        category: uploadForm.category.trim(),
-        tags: technologies,
-      })
-      await IdeaService.updateIdea(idea.id, {
-        title: uploadForm.title.trim(),
-        description: uploadForm.description.trim(),
         category: uploadForm.category.trim(),
         tags: technologies,
         status: 'submitted',
         repositoryUrl: uploadForm.repositoryUrl.trim() || null,
         demoUrl: uploadForm.demoUrl.trim() || null,
         projectAttachments: [{
+          type: 'nomination',
+          url: '',
+          name: nomineeName,
+          nomineeUserId,
+          nomineePosition: uploadForm.nomineePosition.trim(),
+          nominatingHead: uploadForm.nominatingHead.trim(),
+        }, {
           type: 'screenshot',
           url: uploadedImage.url,
           name: projectImage.name,
@@ -333,20 +316,19 @@ export function ProjectShowcase() {
       })
 
       notifications.show({
-        title: 'Project Uploaded',
-        message: 'Your project is now visible in the showcase',
+        title: 'Nomination submitted',
+        message: 'The nomination is now available for review.',
         color: 'green',
       })
-      setUploadOpened(false)
       setProjectImage(null)
       setUploadForm(emptyUploadForm())
       await loadProjects()
     } catch (error) {
       notifications.show({
-        title: 'Upload failed',
+        title: 'Submission failed',
         message: error instanceof ApiError || error instanceof Error
           ? error.message
-          : 'Unable to upload project',
+          : 'Unable to submit the nomination',
         color: 'red',
       })
     } finally {
@@ -358,12 +340,14 @@ export function ProjectShowcase() {
     if (!user) {
       notifications.show({
         title: 'Login Required',
-        message: 'Please log in to vote for projects',
+        message: 'Please log in to vote for a nominee.',
         color: 'orange',
       })
       return
     }
 
+    if (votingIds.has(projectId)) return
+    setVotingIds((current) => new Set(current).add(projectId))
     try {
       const result = await IdeaService.voteIdea(projectId)
       setProjects(prev => prev.map(project => {
@@ -389,9 +373,11 @@ export function ProjectShowcase() {
       console.error('Error voting:', error)
       notifications.show({
         title: 'Error',
-        message: error instanceof ApiError ? error.message : 'Failed to record vote',
+        message: error instanceof Error ? error.message : 'Failed to record vote',
         color: 'red',
       })
+    } finally {
+      setVotingIds((current) => { const next = new Set(current); next.delete(projectId); return next })
     }
   }
 
@@ -399,13 +385,12 @@ export function ProjectShowcase() {
     return projects.filter(project => {
       const matchesSearch = project.title.toLowerCase().includes(filters.search.toLowerCase()) ||
                            project.description.toLowerCase().includes(filters.search.toLowerCase()) ||
-                           project.team_name.toLowerCase().includes(filters.search.toLowerCase())
+                           project.nominee_name.toLowerCase().includes(filters.search.toLowerCase())
       
       const matchesCategory = !filters.category || project.category === filters.category
       const matchesTechnology = !filters.technology || project.technologies.includes(filters.technology)
-      const matchesPrize = !filters.prizeOnly || project.prize_position
       
-      return matchesSearch && matchesCategory && matchesTechnology && matchesPrize
+      return matchesSearch && matchesCategory && matchesTechnology
     })
   }, [projects, filters])
 
@@ -413,49 +398,13 @@ export function ProjectShowcase() {
     () => [...new Set(projects.flatMap((project) => project.technologies))].sort(),
     [projects]
   )
-
-  const getPrizeIcon = (position?: number) => {
-    if (!position) return null
-    const colors = ['#FFD700', '#C0C0C0', '#CD7F32'] // Gold, Silver, Bronze
-    return (
-      <ThemeIcon size="sm" variant="filled" style={{ backgroundColor: colors[position - 1] }}>
-        <IconTrophy size={12} />
-      </ThemeIcon>
-    )
-  }
-
-  const loadComments = async (projectId: string) => {
-    setCommentsLoading(true)
-    try {
-      const loadedComments = await IdeaService.getComments(projectId)
-      const authorNames = new Map<string, string>()
-      const commentsWithAuthors = await Promise.all(loadedComments.map(async (comment) => {
-        let authorName = authorNames.get(comment.userId)
-        if (!authorName) {
-          const profile = await ProfileService.getProfile(comment.userId).catch(() => null)
-          authorName = profile?.name ?? 'User'
-          authorNames.set(comment.userId, authorName)
-        }
-        return { ...comment, authorName }
-      }))
-      setComments(commentsWithAuthors)
-    } catch (error) {
-      notifications.show({
-        title: 'Error',
-        message: error instanceof ApiError ? error.message : 'Failed to load comments',
-        color: 'red',
-      })
-    } finally {
-      setCommentsLoading(false)
-    }
-  }
+  const selectedNominationTrack = DIGITAL_PIONEER_TRACKS.find(
+    (track) => track.value === uploadForm.category
+  )
 
   const openProjectModal = (project: Project) => {
     setSelectedProject(project)
-    setComments([])
-    setCommentContent('')
     setModalOpened(true)
-    void loadComments(project.id)
     if (user?.role === 'participant' && !assignedJudgeHackathons.has(project.hackathon_id)) {
       void JudgingService.getJudges(project.hackathon_id).then((judges) => {
         if (judges.some((judge) => judge.userId === user.id)) {
@@ -465,32 +414,246 @@ export function ProjectShowcase() {
     }
   }
 
-  const handleAddComment = async () => {
-    if (!selectedProject || !commentContent.trim()) return
+  if (!user) {
+    return (
+      <Container size="md" py="xl">
+        <Center py="xl">
+          <Stack align="center" gap="md">
+            <ThemeIcon size={80} variant="light" color="red">
+              <IconTool style={{ width: 40, height: 40 }} />
+            </ThemeIcon>
+            <Title order={3}>Access Denied</Title>
+            <Text c="dimmed" ta="center">
+              You don&apos;t have permission to view nominations. Please contact an administrator.
+            </Text>
+          </Stack>
+        </Center>
+      </Container>
+    )
+  }
 
-    setCommentSubmitting(true)
-    try {
-      await IdeaService.addComment(selectedProject.id, commentContent.trim())
-      setCommentContent('')
-      await loadComments(selectedProject.id)
-      notifications.show({
-        title: 'Comment Posted',
-        message: 'Your comment is now visible',
-        color: 'green',
-      })
-    } catch (error) {
-      notifications.show({
-        title: 'Comment Failed',
-        message: error instanceof ApiError ? error.message : 'Unable to post comment',
-        color: 'red',
-      })
-    } finally {
-      setCommentSubmitting(false)
-    }
+  if (nominationMode) {
+    return (
+      <Container size={1240} py={{ base: 'md', md: 'xl' }} className="dp-page">
+        <section className="dp-hero dp-nomination-hero" aria-labelledby="nomination-title">
+          <Grid className="dp-hero__content" align="center">
+            <Grid.Col span={{ base: 12, md: 8 }}>
+              <h1 id="nomination-title" className="dp-section-title" style={{ marginTop: 18 }}>
+                Nominate a Digital Pioneer.
+              </h1>
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, md: 4 }}>
+              <AwardLens compact />
+            </Grid.Col>
+          </Grid>
+        </section>
+
+        <section className="dp-nomination-flow" aria-labelledby="track-choice-title">
+          <div className="dp-flow-heading">
+            <div>
+              <Title id="track-choice-title" order={2}>Choose an award category</Title>
+            </div>
+          </div>
+
+          <div className="dp-nomination-tracks" role="radiogroup" aria-label="Nomination track">
+            {DIGITAL_PIONEER_TRACKS.map((track) => {
+              const isSelected = track.value === uploadForm.category
+              return (
+                <UnstyledButton
+                  key={track.value}
+                  className="dp-nomination-track"
+                  data-active={isSelected}
+                  role="radio"
+                  aria-checked={isSelected}
+                  aria-controls="nomination-form"
+                  aria-expanded={isSelected}
+                  onClick={() => setUploadForm((current) => ({ ...current, category: track.value }))}
+                >
+                  <span className="dp-nomination-track__topline">
+                    <span className="dp-nomination-track__code">{track.shorthand}</span>
+                    <span className="dp-nomination-track__check" aria-hidden="true">
+                      {isSelected ? <IconCheck size={15} stroke={2.4} /> : null}
+                    </span>
+                  </span>
+                  <span className="dp-nomination-track__name">{track.label}</span>
+                  <span className="dp-nomination-track__description">{track.description}</span>
+                </UnstyledButton>
+              )
+            })}
+          </div>
+
+          {!selectedNominationTrack ? (
+            <div className="dp-track-gate" role="status">
+              <Text fw={650}>Choose a track to begin</Text>
+            </div>
+          ) : loading ? (
+            <div className="dp-track-gate" role="status">
+              <Text fw={650}>Preparing the nomination form…</Text>
+            </div>
+          ) : hackathons.length === 0 ? (
+            <Alert color="orange" icon={<IconInfoCircle size={18} />} mt="lg">
+              No nomination window is currently open.
+            </Alert>
+          ) : (
+            <Card className="dp-form-shell" p={{ base: 'lg', md: 38 }}>
+              <Stack gap={0} id="nomination-form">
+                  <Group className="dp-form-intro" justify="space-between" align="center" wrap="wrap">
+                    <div>
+                      <Title order={3}>{selectedNominationTrack.label}</Title>
+                    </div>
+                    <Badge className="dp-selected-track" variant="light">
+                      <span>{selectedNominationTrack.shorthand}</span>
+                      <span aria-hidden="true"> · </span>
+                      <span>Selected</span>
+                    </Badge>
+                  </Group>
+                  <div className="dp-fieldset" style={{ borderTop: 0, paddingTop: 0 }}>
+                    <Grid gutter="md">
+                      <Grid.Col span={12}>
+                        {user.role === 'participant' ? (
+                          <TextInput label="Nominee name" value={user.name} readOnly />
+                        ) : (
+                          <Select
+                            label="Nominee name"
+                            searchable
+                            required
+                            data={nominees.length ? nominees.map((candidate) => ({ value: candidate.id, label: `${candidate.name} (${candidate.email})` })) : [{ value: user.id, label: user.name }]}
+                            value={uploadForm.nomineeUserId || user.id}
+                            onChange={(value) => setUploadForm((current) => ({ ...current, nomineeUserId: value ?? user.id }))}
+                          />
+                        )}
+                        {nomineeLoadError && <Text size="sm" c="red" role="alert">Unable to load associates. Refresh to retry; self-nomination is still available.</Text>}
+                      </Grid.Col>
+                      <Grid.Col span={{ base: 12, sm: 6 }}>
+                        <TextInput label="Position" value={uploadForm.nomineePosition}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, nomineePosition: event.target.value }))} />
+                      </Grid.Col>
+                      <Grid.Col span={{ base: 12, sm: 6 }}>
+                        <TextInput label="Nominating head of department" value={uploadForm.nominatingHead}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, nominatingHead: event.target.value }))} />
+                      </Grid.Col>
+                      <Grid.Col span={{ base: 12, sm: 7 }}>
+                        <TextInput
+                          label="Contribution title"
+                          required
+                          placeholder="e.g. Predictive maintenance rollout"
+                          value={uploadForm.title}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
+                        />
+                      </Grid.Col>
+                      <Grid.Col span={{ base: 12, sm: 5 }}>
+                        <FileInput
+                          label="Nominee photo"
+                          required
+                          accept="image/jpeg,image/png,image/webp"
+                          leftSection={<IconPhoto size={16} />}
+                          value={projectImage}
+                          onChange={setProjectImage}
+                          clearable
+                        />
+                      </Grid.Col>
+                    </Grid>
+                  </div>
+
+                  <div className="dp-fieldset">
+                    <div className="dp-nomination-question">
+                      <Text className="dp-field-number">01</Text>
+                      <div style={{ minWidth: 0 }}>
+                        <Textarea
+                          label="Executive summary"
+                          required
+                          minRows={6}
+                          maxLength={1200}
+                          placeholder="Summarize the contribution in 3–5 sentences."
+                          value={uploadForm.executiveSummary}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, executiveSummary: event.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="dp-fieldset">
+                    <div className="dp-nomination-question">
+                      <Text className="dp-field-number">02</Text>
+                      <div style={{ minWidth: 0 }}>
+                        <Textarea
+                          label="Core achievement & business impact"
+                          required
+                          minRows={6}
+                          maxLength={2400}
+                          placeholder="Include measurable results, financial figures, currency and measurement period."
+                          value={uploadForm.achievementImpact}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, achievementImpact: event.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="dp-fieldset">
+                    <div className="dp-nomination-question">
+                      <Text className="dp-field-number">03</Text>
+                      <div style={{ minWidth: 0 }}>
+                        <Textarea
+                          label="High-Performance Culture demonstration"
+                          required
+                          minRows={6}
+                          maxLength={2000}
+                          placeholder="Describe how the contribution meets the selected award criteria."
+                          value={uploadForm.cultureDemonstration}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, cultureDemonstration: event.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="dp-fieldset">
+                    <div className="dp-nomination-question">
+                      <Text className="dp-field-number">04</Text>
+                      <div style={{ minWidth: 0 }}>
+                        <TextInput
+                          label="Tags"
+                          placeholder="AI, quality, customer experience"
+                          value={uploadForm.technologies}
+                          onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
+                        />
+                        <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md">
+                          <TextInput
+                            label="Supporting evidence URL"
+                            placeholder="https://..."
+                            value={uploadForm.repositoryUrl}
+                            onChange={(event) => setUploadForm((current) => ({ ...current, repositoryUrl: event.target.value }))}
+                          />
+                          <TextInput
+                            label="Additional evidence URL"
+                            placeholder="https://..."
+                            value={uploadForm.demoUrl}
+                            onChange={(event) => setUploadForm((current) => ({ ...current, demoUrl: event.target.value }))}
+                          />
+                        </SimpleGrid>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Group justify="flex-end" align="center" pt="lg">
+                    <Button
+                      className="dp-primary-button"
+                      rightSection={<IconArrowRight size={17} />}
+                      onClick={() => void handleProjectUpload()}
+                      loading={uploading}
+                    >
+                      Submit nomination
+                    </Button>
+                  </Group>
+                </Stack>
+            </Card>
+          )}
+        </section>
+      </Container>
+    )
   }
 
   return (
-    <Container size="xl" py="xl">
+    <Container size={1240} py={{ base: 'sm', md: 'lg' }} className="dp-page">
       {/* Check permissions first */}
       {!user ? (
         <Center py="xl">
@@ -500,203 +663,142 @@ export function ProjectShowcase() {
             </ThemeIcon>
             <Title order={3}>Access Denied</Title>
             <Text c="dimmed" ta="center">
-              You don't have permission to view projects. Please contact an administrator.
+              You don't have permission to view nominations. Please contact an administrator.
             </Text>
           </Stack>
         </Center>
       ) : (
-      <Stack gap="xl">
-        {/* Header */}
-        <div>
-          <Group justify="space-between" align="flex-start">
+      <Stack gap="lg">
+        <div className="dp-selection-header">
+          <Group justify="space-between" align="center">
             <div>
-              <Title order={1} mb="xs">
-                Project Showcase
-              </Title>
-              <Text c="dimmed" size="lg">
-                Discover amazing projects built during hackathons
-              </Text>
+              <h1 className="dp-section-title dp-selection-title">Meet this year&apos;s nominees</h1>
             </div>
-            <Group gap="md">
-              <Button leftSection={<IconUpload size={16} />} onClick={() => openUploadModal()}>
-                Upload Project
-              </Button>
-              {/* Real-time connection indicator */}
-              <Group gap="xs">
-                <div 
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    backgroundColor: isConnected ? '#51cf66' : '#fa5252',
-                    marginTop: 8
-                  }}
-                />
-                <Text size="xs" c="dimmed">
-                  {isConnected ? 'Live' : 'Offline'}
-                </Text>
-              </Group>
-            </Group>
+            <Button
+              leftSection={<IconUpload size={16} />}
+              onClick={() => navigate('/nominate')}
+              className="dp-primary-button"
+            >
+              New nomination
+            </Button>
           </Group>
         </div>
 
-        {/* The existing category field is the persisted track identifier. */}
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
-          {PROJECT_TRACKS.map((track, index) => (
-            <Card key={track.value} withBorder p="lg">
-              <Stack gap="sm">
-                <Group justify="space-between">
-                  <Badge variant="light">Track {index + 1}</Badge>
-                  <Text size="sm" c="dimmed">
-                    {(() => {
-                      const count = projects.filter((project) => project.category === track.value).length
-                      return `${count} ${count === 1 ? 'project' : 'projects'}`
-                    })()}
-                  </Text>
-                </Group>
-                <Title order={4}>{track.label}</Title>
-                <Text size="sm" c="dimmed" mih={40}>{track.description}</Text>
-                <Group grow>
-                  <Button
-                    variant={filters.category === track.value ? 'filled' : 'light'}
-                    onClick={() => setFilters((current) => ({ ...current, category: track.value }))}
-                  >
-                    View Track
-                  </Button>
-                  <Button variant="outline" onClick={() => openUploadModal(track.value)}>
-                    Upload Work
-                  </Button>
-                </Group>
-              </Stack>
-            </Card>
+        <div className="dp-category-tabs" role="group" aria-label="Filter by award category">
+          <UnstyledButton
+            className="dp-category-tab"
+            data-active={filters.category === ''}
+            aria-pressed={filters.category === ''}
+            onClick={() => setFilters((current) => ({ ...current, category: '' }))}
+          >
+            <span>All nominees</span>
+            <span className="dp-category-tab__count">{projects.length}</span>
+          </UnstyledButton>
+          {DIGITAL_PIONEER_TRACKS.map((track) => (
+            <UnstyledButton
+              key={track.value}
+              className="dp-category-tab"
+              data-active={filters.category === track.value}
+              aria-pressed={filters.category === track.value}
+              onClick={() => setFilters((current) => ({ ...current, category: track.value }))}
+            >
+              <span>{track.label}</span>
+              <span className="dp-category-tab__count">
+                {projects.filter((project) => project.category === track.value).length}
+              </span>
+            </UnstyledButton>
           ))}
-        </SimpleGrid>
+        </div>
 
-        {/* Filters */}
-        <Card withBorder>
-          <Grid>
-            <Grid.Col span={{ base: 12, md: 4 }}>
+        {!nominationMode && (
+        <>
+        <Card className="dp-filter-shell" p="sm">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
               <TextInput
-                placeholder="Search projects..."
+                placeholder="Search nominee or contribution"
                 leftSection={<IconSearch size={16} />}
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
               />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 3 }}>
               <Select
-                placeholder="Track"
-                data={PROJECT_TRACKS.map((track) => ({ value: track.value, label: track.label }))}
-                value={filters.category}
-                onChange={(value) => setFilters(prev => ({ ...prev, category: value || '' }))}
-                clearable
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 3 }}>
-              <Select
-                placeholder="Technology"
+                placeholder="Filter by tag"
                 data={technologies}
                 value={filters.technology}
                 onChange={(value) => setFilters(prev => ({ ...prev, technology: value || '' }))}
                 clearable
               />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 2 }}>
-              <Button
-                variant={filters.prizeOnly ? 'filled' : 'light'}
-                onClick={() => setFilters(prev => ({ ...prev, prizeOnly: !prev.prizeOnly }))}
-                leftSection={<IconTrophy size={16} />}
-                fullWidth
-              >
-                Winners Only
-              </Button>
-            </Grid.Col>
-          </Grid>
+          </SimpleGrid>
         </Card>
 
-        {/* Projects Grid */}
-        <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+        <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} withBorder h={400} p="lg">
+              <Card key={i} className="dp-project-card" h={330} p="lg">
                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text c="dimmed">Loading...</Text>
+                  <Text c="dimmed">Loading nominations…</Text>
                 </div>
               </Card>
             ))
           ) : filteredProjects.length > 0 ? (
             filteredProjects.map((project) => (
-              <Card key={project.id} withBorder p="lg" style={{ cursor: 'pointer' }} onClick={() => openProjectModal(project)}>
-                <Stack gap="md">
-                  {/* Project Header */}
-                  <Group justify="space-between">
-                    <Group>
-                      <Title order={4} lineClamp={1}>{project.title}</Title>
-                      {getPrizeIcon(project.prize_position)}
-                    </Group>
-                    <ActionIcon
-                      variant={project.user_vote ? 'filled' : 'light'}
-                      color="red"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleVote(project.id)
-                      }}
-                    >
-                      {project.user_vote ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
-                    </ActionIcon>
-                  </Group>
-
-                  {project.images[0] ? (
-                    <Image
-                      src={project.images[0]}
-                      alt={`${project.title} screenshot`}
-                      h={160}
-                      radius="md"
-                      fit="cover"
-                    />
-                  ) : (
-                    <div style={{ height: 160, backgroundColor: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Text c="dimmed" size="sm">Project Screenshot</Text>
-                    </div>
-                  )}
-
-                  {/* Description */}
-                  <Text size="sm" c="dimmed" lineClamp={3}>
-                    {project.description}
-                  </Text>
-
-                  <Badge variant="outline" w="fit-content">{project.category}</Badge>
-
-                  {/* Team & Hackathon */}
-                  <div>
-                    <Group gap="xs" mb="xs">
-                      <IconUsers size={14} />
-                      <Text size="sm" fw={500}>{project.team_name}</Text>
-                    </Group>
-                    <Text size="xs" c="dimmed">{project.hackathon_name}</Text>
+              <Card
+                key={project.id}
+                className="dp-project-card"
+                data-voted={project.user_vote ? 'true' : undefined}
+                p="md"
+              >
+                <Stack gap="sm" h="100%">
+                  <div className="dp-card-visual">
+                    {project.images[0] ? (
+                      <Image
+                        src={project.images[0]}
+                        alt={`${project.nominee_name} nomination`}
+                        h={148}
+                        radius="lg"
+                        fit="cover"
+                      />
+                    ) : (
+                      <div className="dp-nominee-placeholder">
+                        <IconUser size={24} />
+                        <Text c="dimmed" size="sm">Nominee photo</Text>
+                      </div>
+                    )}
+                    {project.user_vote ? (
+                      <div className="dp-vote-stamp" role="status">
+                        <IconHeartFilled size={14} />
+                        <span>Voted</span>
+                      </div>
+                    ) : null}
                   </div>
 
-                  {/* Technologies */}
-                  <Group gap="xs">
-                    {project.technologies.slice(0, 3).map((tech) => (
-                      <Badge key={tech} size="xs" variant="light">
+                  <Badge variant="outline" w="fit-content">{project.category}</Badge>
+                  <div>
+                    <Title order={4} lineClamp={1}>{project.title}</Title>
+                    <Group gap={6} mt={5}>
+                      <IconUser size={13} />
+                      <Text size="sm" fw={550}>{project.nominee_name}</Text>
+                    </Group>
+                  </div>
+                  <Text size="sm" c="dimmed" lineClamp={2}>{project.description}</Text>
+
+                  <Group gap={6}>
+                    {project.technologies.slice(0, 2).map((tech) => (
+                      <Badge key={tech} size="sm" variant="light">
                         {tech}
                       </Badge>
                     ))}
-                    {project.technologies.length > 3 && (
-                      <Badge size="xs" variant="outline">
-                        +{project.technologies.length - 3}
+                    {project.technologies.length > 2 && (
+                      <Badge size="sm" variant="outline">
+                        +{project.technologies.length - 2}
                       </Badge>
                     )}
                   </Group>
 
-                  {/* Footer */}
-                  <Group justify="space-between" mt="auto">
-                    <Group gap="xs">
-                      <IconHeart size={14} />
-                      <Text size="sm">{project.votes}</Text>
-                    </Group>
-                    <Group gap="xs">
+                  <Group justify="space-between" align="center" mt="auto" wrap="nowrap">
+                    <Group gap={6}>
+                      <Button size="compact-sm" variant="subtle" onClick={() => openProjectModal(project)}>
+                        Details & comments
+                      </Button>
                       {project.github_url && (
                         <ActionIcon
                           component="a"
@@ -705,7 +807,7 @@ export function ProjectShowcase() {
                           rel="noopener noreferrer"
                           variant="light"
                           size="sm"
-                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Open evidence"
                         >
                           <IconBrandGithub size={14} />
                         </ActionIcon>
@@ -718,12 +820,26 @@ export function ProjectShowcase() {
                           rel="noopener noreferrer"
                           variant="light"
                           size="sm"
-                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Open additional evidence"
                         >
                           <IconWorldWww size={14} />
                         </ActionIcon>
                       )}
                     </Group>
+                    <Button
+                      className="dp-vote-button"
+                      loading={votingIds.has(project.id)}
+                      data-voted={project.user_vote ? 'true' : 'false'}
+                      variant={project.user_vote ? 'filled' : 'default'}
+                      leftSection={project.user_vote ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
+                      aria-label={project.user_vote ? `Voted, ${project.votes} votes` : `Vote, ${project.votes} votes`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void handleVote(project.id)
+                      }}
+                    >
+                      {project.user_vote ? 'Voted' : 'Vote'} ({project.votes})
+                    </Button>
                   </Group>
                 </Stack>
               </Card>
@@ -735,15 +851,17 @@ export function ProjectShowcase() {
                   <ThemeIcon size={60} variant="light" color="gray">
                     <IconTrophy size={30} />
                   </ThemeIcon>
-                  <Text c="dimmed">No projects found matching your filters</Text>
-                  <Button leftSection={<IconUpload size={16} />} onClick={() => openUploadModal()}>
-                    Upload Project
+                  <Text c="dimmed">No nominations match these filters.</Text>
+                  <Button leftSection={<IconUpload size={16} />} onClick={() => navigate('/nominate')}>
+                    New nomination
                   </Button>
                 </Stack>
               </Center>
             </div>
           )}
         </SimpleGrid>
+        </>
+        )}
 
         {/* Project Detail Modal */}
         <Modal
@@ -757,40 +875,39 @@ export function ProjectShowcase() {
             {selectedProject.images[0] ? (
               <Image
                 src={selectedProject.images[0]}
-                alt={`${selectedProject.title} screenshot`}
+                alt={`${selectedProject.nominee_name} nomination`}
                 h={300}
                 radius="md"
                 fit="contain"
               />
             ) : (
               <div style={{ height: 300, backgroundColor: '#f8f9fa', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Text c="dimmed">Project Screenshot/Demo</Text>
+                <Text c="dimmed">Nominee photo</Text>
               </div>
             )}
 
             {/* Description */}
-            <Text>{selectedProject.description}</Text>
+            <Text style={{ whiteSpace: 'pre-wrap' }}>{selectedProject.description}</Text>
             <Badge variant="light" w="fit-content">{selectedProject.category}</Badge>
 
-            {/* Team Members */}
+            {/* Individual nominee */}
             <div>
-              <Title order={5} mb="sm">Team Members</Title>
+              <Title order={5} mb="sm">Nominee</Title>
               <Group>
-                {selectedProject.team_members.map((member) => (
+                {([{ id: selectedProject.id, name: selectedProject.nominee_name, role: undefined }]).map((member) => (
                   <Group key={member.id} gap="xs">
                     <Avatar size="sm" />
                     <div>
                       <Text size="sm" fw={500}>{member.name}</Text>
-                      {member.role && <Text size="xs" c="dimmed">{member.role}</Text>}
+                      {member.role && <Text size="sm" c="dimmed">{member.role}</Text>}
                     </div>
                   </Group>
                 ))}
               </Group>
             </div>
 
-            {/* Technologies */}
             <div>
-              <Title order={5} mb="sm">Technologies Used</Title>
+              <Title order={5} mb="sm">Tags</Title>
               <Group>
                 {selectedProject.technologies.map((tech) => (
                   <Badge key={tech} variant="light">
@@ -810,7 +927,7 @@ export function ProjectShowcase() {
                   leftSection={<IconBrandGithub size={16} />}
                   variant="light"
                 >
-                  View Code
+                  View Evidence
                 </Button>
               )}
               {selectedProject.demo_url && (
@@ -821,7 +938,7 @@ export function ProjectShowcase() {
                   leftSection={<IconExternalLink size={16} />}
                   variant="light"
                 >
-                  Live Demo
+                  Additional evidence
                 </Button>
               )}
               {(user.role === 'admin' || user.role === 'manager'
@@ -829,10 +946,10 @@ export function ProjectShowcase() {
                 <Button
                   leftSection={<IconGavel size={16} />}
                   variant="light"
-                  color="indigo"
+                  color="grape"
                   onClick={() => navigate(`/hackathons/${selectedProject.hackathon_id}/judge`)}
                 >
-                  Open Judging Panel
+                  Committee scoring
                 </Button>
               )}
             </Group>
@@ -840,6 +957,7 @@ export function ProjectShowcase() {
             {/* Vote Button */}
             <Button
               fullWidth
+              loading={votingIds.has(selectedProject.id)}
               leftSection={selectedProject.user_vote ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
               variant={selectedProject.user_vote ? 'filled' : 'light'}
               color="red"
@@ -848,174 +966,11 @@ export function ProjectShowcase() {
               {selectedProject.user_vote ? 'Voted' : 'Vote'} ({selectedProject.votes})
             </Button>
 
-            <Divider />
-
-            <div>
-              <Group justify="space-between" mb="sm">
-                <Title order={5}>Comments</Title>
-                <Badge variant="light" color="gray">{comments.length}</Badge>
-              </Group>
-              {commentsLoading ? (
-                <Center py="md"><Loader size="sm" /></Center>
-              ) : comments.length > 0 ? (
-                <Stack gap="sm">
-                  {comments.map((comment) => (
-                    <Card key={comment.id} withBorder p="sm">
-                      <Group gap="xs">
-                        <Avatar size="sm">{comment.authorName.charAt(0)}</Avatar>
-                        <div>
-                          <Text size="sm" fw={600}>{comment.authorName}</Text>
-                          <Text size="xs" c="dimmed">
-                            {new Date(comment.createdAt).toLocaleString()}
-                          </Text>
-                        </div>
-                      </Group>
-                      <Text size="sm" mt="xs" style={{ whiteSpace: 'pre-wrap' }}>{comment.content}</Text>
-                    </Card>
-                  ))}
-                </Stack>
-              ) : (
-                <Text size="sm" c="dimmed">No comments yet. Be the first to comment.</Text>
-              )}
-            </div>
-
-            <Textarea
-              label="Add a Comment"
-              placeholder="Share feedback about this project..."
-              minRows={2}
-              maxLength={1000}
-              value={commentContent}
-              onChange={(event) => setCommentContent(event.target.value)}
-            />
-            <Button
-              leftSection={<IconMessageCircle size={16} />}
-              onClick={handleAddComment}
-              loading={commentSubmitting}
-              disabled={!commentContent.trim()}
-            >
-              Post Comment
-            </Button>
+            <NominationComments key={selectedProject.id} ideaId={selectedProject.id} userId={user.id} />
           </Stack>
         )}
       </Modal>
 
-      <Modal
-        opened={uploadOpened}
-        onClose={() => !uploading && setUploadOpened(false)}
-        title="Upload a Project"
-        size="lg"
-        closeOnClickOutside={!uploading}
-        closeOnEscape={!uploading}
-      >
-        <Stack gap="md">
-          {hackathons.length === 0 ? (
-            <Alert color="orange">No hackathons are currently available for project uploads.</Alert>
-          ) : (
-            <>
-              <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                <Select
-                  label="Hackathon"
-                  required
-                  data={hackathons.map((hackathon) => ({ value: hackathon.id, label: hackathon.title }))}
-                  value={uploadForm.hackathonId}
-                  onChange={(hackathonId) => {
-                    const nextHackathonId = hackathonId ?? ''
-                    const firstTeam = userTeams.find((team) => team.hackathonId === nextHackathonId)
-                    setUploadForm((current) => ({
-                      ...current,
-                      hackathonId: nextHackathonId,
-                      teamId: firstTeam?.id || CREATE_TEAM_VALUE,
-                    }))
-                  }}
-                />
-                <Select
-                  label="Team"
-                  required
-                  data={[
-                    ...userTeams
-                      .filter((team) => team.hackathonId === uploadForm.hackathonId)
-                      .map((team) => ({ value: team.id, label: team.name })),
-                    { value: CREATE_TEAM_VALUE, label: 'Create a new team' },
-                  ]}
-                  value={uploadForm.teamId}
-                  onChange={(teamId) => setUploadForm((current) => ({ ...current, teamId: teamId ?? '' }))}
-                />
-              </SimpleGrid>
-
-              {uploadForm.teamId === CREATE_TEAM_VALUE && (
-                <TextInput
-                  label="New Team Name"
-                  required
-                  value={uploadForm.teamName}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, teamName: event.target.value }))}
-                />
-              )}
-
-              <TextInput
-                label="Project Title"
-                required
-                value={uploadForm.title}
-                onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
-              />
-              <Textarea
-                label="Project Description"
-                required
-                minRows={3}
-                value={uploadForm.description}
-                onChange={(event) => setUploadForm((current) => ({ ...current, description: event.target.value }))}
-              />
-              <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                <Select
-                  label="Track"
-                  required
-                  placeholder="Select a track"
-                  data={PROJECT_TRACKS.map((track) => ({ value: track.value, label: track.label }))}
-                  value={uploadForm.category}
-                  onChange={(category) => setUploadForm((current) => ({ ...current, category: category ?? '' }))}
-                />
-                <TextInput
-                  label="Technologies"
-                  placeholder="React, Python, PostgreSQL"
-                  value={uploadForm.technologies}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
-                />
-              </SimpleGrid>
-              <FileInput
-                label="Project Image"
-                description="PNG, JPG, GIF, WebP or SVG"
-                required
-                accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-                leftSection={<IconUpload size={16} />}
-                value={projectImage}
-                onChange={setProjectImage}
-                clearable
-              />
-              <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                <TextInput
-                  label="Repository URL"
-                  placeholder="https://github.com/..."
-                  value={uploadForm.repositoryUrl}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, repositoryUrl: event.target.value }))}
-                />
-                <TextInput
-                  label="Demo URL"
-                  placeholder="https://..."
-                  value={uploadForm.demoUrl}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, demoUrl: event.target.value }))}
-                />
-              </SimpleGrid>
-              <Group justify="flex-end">
-                <Button variant="default" onClick={() => setUploadOpened(false)} disabled={uploading}>
-                  Cancel
-                </Button>
-                <Button leftSection={<IconUpload size={16} />} onClick={handleProjectUpload} loading={uploading}>
-                  Upload Project
-                </Button>
-              </Group>
-            </>
-          )}
-        </Stack>
-      </Modal>
       </Stack>
       )}
     </Container>

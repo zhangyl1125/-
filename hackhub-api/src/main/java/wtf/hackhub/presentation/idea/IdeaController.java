@@ -57,8 +57,8 @@ public class IdeaController {
 	@ResponseStatus(HttpStatus.CREATED)
 	public IdeaResponse create(@PathVariable UUID hackathonId, @Valid @RequestBody CreateIdeaRequest req,
 			@AuthenticationPrincipal UUID userId) {
-		return IdeaResponse.from(submitIdeaUseCase.execute(req.title(), req.description(), hackathonId, req.teamId(),
-				userId, req.category(), req.tags()), false);
+		return IdeaResponse.from(submitIdeaUseCase.executeNomination(req.title(), req.description(), hackathonId, req.teamId(),
+				userId, req.category(), req.tags(), req.status(), req.repositoryUrl(), req.demoUrl(), req.projectAttachments()), false);
 	}
 
 	@Operation(summary = "Get an idea by ID")
@@ -165,7 +165,8 @@ public class IdeaController {
 	}
 
 	public record CreateIdeaRequest(@NotBlank String title, @NotBlank String description, UUID teamId,
-			@NotBlank String category, List<String> tags) {
+			@NotBlank String category, List<String> tags, Idea.Status status, String repositoryUrl, String demoUrl,
+			String projectAttachments) {
 	}
 
 	public record UpdateIdeaRequest(@NotBlank String title, @NotBlank String description, @NotBlank String category,

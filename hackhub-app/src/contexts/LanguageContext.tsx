@@ -8,6 +8,12 @@ const english = {
   'header.settings': 'Settings',
   'header.logout': 'Logout',
   'sidebar.navigation': 'Navigation',
+  'sidebar.overview': 'Overview',
+  'sidebar.overviewDescription': 'Award introduction and timeline',
+  'sidebar.nomination': 'Individual Nomination',
+  'sidebar.nominationDescription': 'Submit an individual nomination',
+  'sidebar.projectOverview': 'Browse & Vote',
+  'sidebar.projectOverviewDescription': 'Review nominees and cast your vote',
   'sidebar.dashboard': 'Dashboard',
   'sidebar.dashboardDescription': 'Overview and analytics',
   'sidebar.organizations': 'Organizations',
@@ -84,6 +90,12 @@ const chinese: Record<TranslationKey, string> = {
   'header.settings': '设置',
   'header.logout': '退出登录',
   'sidebar.navigation': '导航',
+  'sidebar.overview': '概览',
+  'sidebar.overviewDescription': '奖项介绍与时间安排',
+  'sidebar.nomination': '个人提名',
+  'sidebar.nominationDescription': '提交个人提名',
+  'sidebar.projectOverview': '浏览与投票',
+  'sidebar.projectOverviewDescription': '查看候选案例并投票',
   'sidebar.dashboard': '仪表盘',
   'sidebar.dashboardDescription': '概览与数据分析',
   'sidebar.organizations': '组织',
@@ -192,6 +204,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const attributeNames = ['placeholder', 'title', 'aria-label']
 
     const translateTextNode = (node: Text) => {
+      if (node.parentElement?.closest('[translate="no"]')) return
       const currentValue = node.nodeValue ?? ''
 
       if (language === 'en') {

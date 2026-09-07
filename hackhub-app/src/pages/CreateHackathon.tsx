@@ -51,7 +51,7 @@ const CreateHackathon = () => {
 
   const form = useForm({
     initialValues: {
-      title: '',
+      title: '2026 Digital Pioneer Award',
       description: '',
       start_date: new Date(),
       end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
@@ -75,14 +75,14 @@ const CreateHackathon = () => {
       },
       end_date: (value, values) => {
         if (!value) return 'End date is required'
-        
+
         // Convert both dates to Date objects for comparison
         const endDate = value instanceof Date ? value : new Date(value)
         const startDate = values.start_date instanceof Date ? values.start_date : new Date(values.start_date)
-        
+
         if (isNaN(endDate.getTime())) return 'Invalid end date'
         if (isNaN(startDate.getTime())) return 'Invalid start date'
-        
+
         if (endDate <= startDate) return 'End date must be after start date'
         return null
       },
@@ -146,11 +146,11 @@ const CreateHackathon = () => {
       // Ensure dates are Date objects before calling toISOString()
       let startDate: Date
       let endDate: Date
-      
+
       try {
         startDate = values.start_date instanceof Date ? values.start_date : new Date(values.start_date)
         endDate = values.end_date instanceof Date ? values.end_date : new Date(values.end_date)
-        
+
         // Validate that the dates are valid
         if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
           throw new Error('Invalid date values')
@@ -180,11 +180,11 @@ const CreateHackathon = () => {
       console.log('Creating hackathon with data:', hackathonData)
       const result = await HackathonService.createHackathon(hackathonData)
       console.log('Hackathon creation result:', result)
-      
+
       if (result) {
         notifications.show({
           title: 'Success',
-          message: 'Hackathon created successfully!',
+          message: 'Award campaign created successfully!',
           color: 'green'
         })
 
@@ -209,16 +209,16 @@ const CreateHackathon = () => {
   }
 
   return (
-    <Container size="lg" py="xl">
+    <Container className="dp-page" size="lg" py="xl">
       <Paper shadow="sm" radius="md" p="xl">
-        <Title order={2} mb="xl">Create New Hackathon</Title>
+        <Title order={2} mb="xl">Create award campaign</Title>
 
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Grid>
             <Grid.Col span={12}>
               <TextInput
                 label="Title"
-                placeholder="Enter hackathon title"
+                placeholder="Enter award campaign title"
                 required
                 {...form.getInputProps('title')}
               />
@@ -238,7 +238,7 @@ const CreateHackathon = () => {
               <Grid.Col span={12}>
                 <Select
                   label="Organization (optional)"
-                  description="Associate this hackathon with one of your organizations"
+                  
                   placeholder="Select organization"
                   data={orgOptions}
                   clearable
@@ -276,16 +276,7 @@ const CreateHackathon = () => {
               />
             </Grid.Col>
 
-            <Grid.Col span={6}>
-              <NumberInput
-                label="Maximum Team Size"
-                placeholder="Enter max team size"
-                min={2}
-                max={20}
-                required
-                {...form.getInputProps('max_team_size')}
-              />
-            </Grid.Col>
+
 
             <Grid.Col span={6}>
               <Select
@@ -394,7 +385,7 @@ const CreateHackathon = () => {
                   loading={loading}
                   disabled={!form.isValid()}
                 >
-                  Create Hackathon
+                  Create award campaign
                 </Button>
               </Group>
             </Grid.Col>

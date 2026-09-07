@@ -3,6 +3,8 @@ spring:
     name: hackhub-api
 
   jackson:
+    deserialization:
+      accept-float-as-int: false
     mapper:
       accept-case-insensitive-enums: true
 

@@ -285,7 +285,7 @@ export function OrganizationSetup() {
             <div>
               <Title order={3}>Create Organization</Title>
               <Text size="sm" c="dimmed">
-                Set up your org on HackHub
+                Set up your organization for Digital Pioneer Award Category
               </Text>
             </div>
           </Group>

@@ -101,6 +101,47 @@ describe('TeamService', () => {
     })
   })
 
+  describe('getOrCreateNominationTeam', () => {
+    const input = { name: 'User nomination', description: 'Contribution', hackathonId: 'h-1' }
+
+    it('reuses membership in an existing team regardless of its name or member role', async () => {
+      mockApi.get.mockResolvedValueOnce([BASE_TEAM]).mockResolvedValueOnce([{ ...BASE_MEMBER, role: 'member' }])
+      expect(await TeamService.getOrCreateNominationTeam(input, 'user-1')).toEqual(BASE_TEAM)
+      expect(mockApi.post).not.toHaveBeenCalled()
+    })
+
+    it('does not use another person’s team even when the name matches', async () => {
+      mockApi.get.mockResolvedValueOnce([{ ...BASE_TEAM, name: input.name }])
+        .mockResolvedValueOnce([{ ...BASE_MEMBER, userId: 'someone-else' }])
+      mockApi.post.mockRejectedValueOnce(new Error('Team name already taken'))
+      mockApi.get.mockResolvedValueOnce([{ ...BASE_TEAM, name: input.name }])
+        .mockResolvedValueOnce([{ ...BASE_MEMBER, userId: 'someone-else' }])
+      await expect(TeamService.getOrCreateNominationTeam(input, 'user-1')).rejects.toThrow('already taken')
+    })
+
+    it('creates once and reuses the container when a submission is retried', async () => {
+      mockApi.get.mockResolvedValueOnce([])
+      mockApi.post.mockResolvedValueOnce(BASE_TEAM)
+      await TeamService.getOrCreateNominationTeam(input, 'user-1')
+      mockApi.get.mockResolvedValueOnce([BASE_TEAM]).mockResolvedValueOnce([BASE_MEMBER])
+      await TeamService.getOrCreateNominationTeam(input, 'user-1')
+      expect(mockApi.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('recovers a membership created by another tab', async () => {
+      mockApi.get.mockResolvedValueOnce([])
+      mockApi.post.mockRejectedValueOnce(new Error('User user-1 is already on a team in hackathon h-1'))
+      mockApi.get.mockResolvedValueOnce([BASE_TEAM]).mockResolvedValueOnce([BASE_MEMBER])
+      expect(await TeamService.getOrCreateNominationTeam(input, 'user-1')).toEqual(BASE_TEAM)
+    })
+
+    it('does not create a team when membership lookup fails', async () => {
+      mockApi.get.mockResolvedValueOnce([BASE_TEAM]).mockRejectedValueOnce(new Error('Network error'))
+      await expect(TeamService.getOrCreateNominationTeam(input, 'user-1')).rejects.toThrow('Network error')
+      expect(mockApi.post).not.toHaveBeenCalled()
+    })
+  })
+
   describe('joinTeam', () => {
     it('posts to members endpoint and returns TeamMember', async () => {
       mockApi.post.mockResolvedValueOnce(BASE_MEMBER)

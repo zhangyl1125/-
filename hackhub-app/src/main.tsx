@@ -5,17 +5,14 @@ import { Notifications } from '@mantine/notifications'
 import { ModalsProvider } from '@mantine/modals'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
-import './index.css'
-import App from './App.tsx'
-import { LanguageProvider } from './contexts/LanguageContext.tsx'
-
 // Import Mantine styles
 import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
 import '@mantine/notifications/styles.css'
-import '@mantine/spotlight/styles.css'
-import '@mantine/carousel/styles.css'
-import '@mantine/charts/styles.css'
+import './index.css'
+import App from './App.tsx'
+import { LanguageProvider } from './contexts/LanguageContext.tsx'
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,7 +26,15 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <MantineProvider defaultColorScheme="auto">
+      <MantineProvider
+        defaultColorScheme="light"
+        theme={{
+          primaryColor: 'grape',
+          defaultRadius: 'md',
+          fontFamily: 'var(--app-font-body)',
+          headings: { fontFamily: 'var(--app-font-body)' },
+        }}
+      >
         <ModalsProvider>
           <Notifications />
           <BrowserRouter>

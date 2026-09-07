@@ -171,3 +171,17 @@ describe('JudgingService', () => {
     })
   })
 })
+
+describe('committee evaluation endpoints', () => {
+  it('submits both criteria and comments atomically', async () => {
+    const input = { ideaId: 'idea-1', scores: [{ criterionId: 'behavior', score: 9 }, { criterionId: 'impact', score: 8 }], comment: 'Verified results' }
+    mockApi.post.mockResolvedValueOnce([BASE_SCORE])
+    await JudgingService.submitEvaluation('h-1', input)
+    expect(mockApi.post).toHaveBeenCalledWith('/api/v1/hackathons/h-1/judging/evaluations', input)
+  })
+  it('loads manager-only individual ratings', async () => {
+    mockApi.get.mockResolvedValueOnce([BASE_SCORE])
+    expect(await JudgingService.getAllScores('h-1')).toEqual([BASE_SCORE])
+    expect(mockApi.get).toHaveBeenCalledWith('/api/v1/hackathons/h-1/judging/scores/all')
+  })
+})

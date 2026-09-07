@@ -129,10 +129,34 @@ COPY src ./src
 
 RUN --mount=type=cache,target=/root/.m2 \
     --mount=type=secret,id=corporate-ca,required=false \
-    /usr/local/bin/mvn-build package -DskipTests -DskipSpotlessCheck -q
+    /usr/local/bin/mvn-build package -DskipTests -Dspotless.check.skip=true -q
 
 # Extract layered jar for faster subsequent image rebuilds
 RUN java -Djarmode=layertools -jar target/*.jar extract --destination target/extracted
+
+# Optional targets used by the Makefile. They keep verification on Java 21 even
+# when the host JDK is older. Neither target is part of the production image.
+FROM builder AS unit-test
+RUN --mount=type=cache,target=/root/.m2 \
+    --mount=type=secret,id=corporate-ca,required=false \
+    /usr/local/bin/mvn-build verify -Dspotless.check.skip=true -q
+
+FROM builder AS integration-test
+RUN --mount=type=cache,target=/root/.m2 \
+    --mount=type=secret,id=corporate-ca,required=false \
+    /usr/local/bin/mvn-build dependency:go-offline -Pintegration -q && \
+    mkdir -p /opt/maven-repository && \
+    cp -a /root/.m2/. /opt/maven-repository/
+
+# Maven runs offline from the copied cache. Testcontainers itself uses the
+# host Docker socket supplied by the Compose test service.
+ENV HTTP_PROXY= \
+    HTTPS_PROXY= \
+    NO_PROXY= \
+    http_proxy= \
+    https_proxy= \
+    no_proxy=
+ENTRYPOINT ["mvn", "-o", "-Dmaven.repo.local=/opt/maven-repository/repository", "-Dapi.version=1.40", "-Dspotless.check.skip=true", "test", "-Pintegration"]
 
 # ── Stage 2: minimal runtime ──────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine

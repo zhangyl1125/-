@@ -88,7 +88,7 @@ class IdeaControllerTest {
 
 	@Test
 	void create_idea_valid_returns_201() throws Exception {
-		when(submitIdeaUseCase.execute(any(), any(), any(), any(), any(), any(), any())).thenReturn(idea());
+		when(submitIdeaUseCase.executeNomination(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(idea());
 		mvc.perform(post("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asParticipant(USER_ID))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"title\":\"My Idea\",\"description\":\"Desc\",\"category\":\"tech\"}"))
@@ -137,7 +137,7 @@ class IdeaControllerTest {
 		when(voteIdeaUseCase.execute(any(), any())).thenThrow(new VoteIdeaUseCase.VoteLimitExceededException(4));
 		mvc.perform(post("/api/v1/ideas/" + IDEA_ID + "/votes").with(MockAuthHelper.asParticipant(USER_ID)))
 				.andExpect(status().isConflict()).andExpect(jsonPath("$.title").value("Voting Rule Conflict"))
-				.andExpect(jsonPath("$.detail").value("Each participant can cast at most 4 votes per hackathon."));
+				.andExpect(jsonPath("$.detail").value("Each participant can cast at most 4 votes per award category."));
 	}
 
 	@Test

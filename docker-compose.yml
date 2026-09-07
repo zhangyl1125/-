@@ -102,6 +102,36 @@ services:
       retries: 10
       start_period: 30s
 
+  # Java 21 verification targets. They only exist under the explicit test
+  # profile and are never started by the normal application stack.
+  api-unit-test:
+    profiles: ["test"]
+    build:
+      context: ./hackhub-api
+      dockerfile: Dockerfile
+      target: unit-test
+      args: *build-proxy-args
+      secrets: *build-secrets
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+
+  api-integration-test:
+    profiles: ["test"]
+    build:
+      context: ./hackhub-api
+      dockerfile: Dockerfile
+      target: integration-test
+      args: *build-proxy-args
+      secrets: *build-secrets
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+    environment:
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
   app:
     build:
       context: ./hackhub-app

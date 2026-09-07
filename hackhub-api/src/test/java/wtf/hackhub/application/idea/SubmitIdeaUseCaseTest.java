@@ -30,6 +30,9 @@ import static org.mockito.Mockito.when;
 class SubmitIdeaUseCaseTest {
 
 	@Mock
+	wtf.hackhub.infrastructure.persistence.IdeaMutationLock mutationLock;
+
+	@Mock
 	IdeaRepository ideaRepository;
 	@Mock
 	HackathonRepository hackathonRepository;
@@ -39,6 +42,10 @@ class SubmitIdeaUseCaseTest {
 	TeamMemberRepository teamMemberRepository;
 	@Mock
 	OrganizationMemberRepository orgMemberRepository;
+	@Mock
+	wtf.hackhub.infrastructure.persistence.auth.ProfileRepository profileRepository;
+	@Mock
+	wtf.hackhub.infrastructure.persistence.judging.JudgeScoreRepository judgeScoreRepository;
 	@InjectMocks
 	SubmitIdeaUseCase useCase;
 
@@ -142,4 +149,67 @@ class SubmitIdeaUseCaseTest {
 		// existing status is DRAFT — null passed in, should remain DRAFT
 		verify(ideaRepository).save(existing);
 	}
+	@Test
+	void participant_cannot_change_nominee_to_another_profile() {
+		UUID ideaId = UUID.randomUUID(), nomineeId = UUID.randomUUID();
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(idea(USER_ID)));
+		when(profileRepository.existsById(nomineeId)).thenReturn(true);
+		when(profileRepository.findById(USER_ID)).thenReturn(Optional.of(new wtf.hackhub.domain.Profile("p@bosch.com", "Participant", "hash")));
+		String metadata = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nomineeId + "\"}]";
+		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "Customer Values", List.of(), null, null, null, metadata))
+				.isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
+		org.mockito.Mockito.verify(ideaRepository, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
+	void creates_nomination_with_metadata_and_submitted_status_in_one_save() {
+		stubValidSubmit();
+		when(profileRepository.existsById(USER_ID)).thenReturn(true);
+		when(ideaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		String metadata = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + USER_ID + "\"}]";
+		Idea saved = useCase.executeNomination("Nomination", "Evidence", HACKATHON_ID, TEAM_ID, USER_ID,
+				"Customer Values", List.of(), Idea.Status.SUBMITTED, "https://example.com/evidence", null, metadata);
+		assertThat(saved.getStatus()).isEqualTo(Idea.Status.SUBMITTED);
+		assertThat(saved.getProjectAttachments()).isEqualTo(metadata);
+		assertThat(saved.getRepositoryUrl()).isEqualTo("https://example.com/evidence");
+		verify(ideaRepository).save(saved);
+	}
+
+	@Test
+	void invalid_nominee_does_not_leave_a_partially_created_case() {
+		stubValidSubmit();
+		String metadata = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + UUID.randomUUID() + "\"}]";
+		assertThatThrownBy(() -> useCase.executeNomination("Nomination", "Evidence", HACKATHON_ID, TEAM_ID, USER_ID,
+				"Customer Values", List.of(), Idea.Status.SUBMITTED, null, null, metadata))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Nominee profile not found");
+		org.mockito.Mockito.verify(ideaRepository, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
+	void rejects_moving_a_voted_case_to_another_track() {
+		UUID ideaId = UUID.randomUUID();
+		Idea existing = idea(USER_ID);
+		org.springframework.test.util.ReflectionTestUtils.setField(existing, "votes", 1);
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(existing));
+		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "Customer Values", List.of(), null, null, null, null))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Track and nominee cannot change");
+		org.mockito.Mockito.verify(ideaRepository, org.mockito.Mockito.never()).save(any());
+		var ordered = org.mockito.Mockito.inOrder(mutationLock, ideaRepository);
+		ordered.verify(mutationLock).acquire(ideaId);
+		ordered.verify(ideaRepository).findById(ideaId);
+	}
+
+	@Test
+	void rejects_removing_manager_nominee_metadata_after_committee_scoring() {
+		UUID ideaId = UUID.randomUUID(), nominee = UUID.randomUUID();
+		Idea existing = idea(USER_ID);
+		existing.update("Title", "Desc", "AI", List.of(), Idea.Status.SUBMITTED, null, null,
+				"[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nominee + "\"}]");
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(existing));
+		when(judgeScoreRepository.findAllByIdeaId(ideaId)).thenReturn(List.of(new wtf.hackhub.domain.JudgeScore(
+				HACKATHON_ID, ideaId, UUID.randomUUID(), null, 8, "Evidence")));
+		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "AI", List.of(), null, null, null, null))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Track and nominee cannot change");
+	}
+
 }

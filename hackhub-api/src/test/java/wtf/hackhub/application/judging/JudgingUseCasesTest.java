@@ -36,6 +36,9 @@ class JudgingUseCasesTest {
 	// ── RemoveJudgeUseCase ────────────────────────────────────────────────────
 
 	@Mock
+	wtf.hackhub.infrastructure.persistence.IdeaMutationLock mutationLock;
+
+	@Mock
 	HackathonJudgeRepository judgeRepository;
 
 	@InjectMocks
@@ -67,6 +70,10 @@ class JudgingUseCasesTest {
 	@Mock
 	JudgeScoreRepository scoreRepository;
 
+	@Mock
+	wtf.hackhub.infrastructure.persistence.idea.IdeaRepository ideaRepository;
+	@Mock
+	wtf.hackhub.infrastructure.persistence.idea.VotingCriteriaRepository criteriaRepository;
 	@InjectMocks
 	SubmitJudgeScoreUseCase submitScore;
 
@@ -77,6 +84,11 @@ class JudgingUseCasesTest {
 		UUID judgeId = UUID.randomUUID();
 		UUID criterionId = UUID.randomUUID();
 		JudgeScore saved = new JudgeScore(hackathonId, ideaId, judgeId, criterionId, 8, "Good");
+		var idea = mock(wtf.hackhub.domain.Idea.class);
+		when(idea.getHackathonId()).thenReturn(hackathonId);
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(idea));
+		when(criteriaRepository.findById(criterionId)).thenReturn(Optional.of(new wtf.hackhub.domain.VotingCriteria(hackathonId, "Behavior", "", 70, 0)));
+
 
 		when(judgeRepository.existsByHackathonIdAndUserId(hackathonId, judgeId)).thenReturn(true);
 		when(scoreRepository.findByIdeaIdAndJudgeIdAndCriterionId(ideaId, judgeId, criterionId))
@@ -94,6 +106,11 @@ class JudgingUseCasesTest {
 		UUID judgeId = UUID.randomUUID();
 		UUID criterionId = UUID.randomUUID();
 		JudgeScore existing = new JudgeScore(hackathonId, ideaId, judgeId, criterionId, 5, "OK");
+		var idea = mock(wtf.hackhub.domain.Idea.class);
+		when(idea.getHackathonId()).thenReturn(hackathonId);
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(idea));
+		when(criteriaRepository.findById(criterionId)).thenReturn(Optional.of(new wtf.hackhub.domain.VotingCriteria(hackathonId, "Behavior", "", 70, 0)));
+
 
 		when(judgeRepository.existsByHackathonIdAndUserId(hackathonId, judgeId)).thenReturn(true);
 		when(scoreRepository.findByIdeaIdAndJudgeIdAndCriterionId(ideaId, judgeId, criterionId))
@@ -334,4 +351,27 @@ class JudgingUseCasesTest {
 		assertThatThrownBy(() -> submitFinal.execute(hackathonId, teamId, userId, null, "T", "D", "[]"))
 				.isInstanceOf(SubmitFinalPresentationUseCase.NotTeamMemberException.class);
 	}
+	@Test
+	void rejects_case_from_another_award() {
+		UUID award = UUID.randomUUID(), ideaId = UUID.randomUUID(), judge = UUID.randomUUID();
+		when(judgeRepository.existsByHackathonIdAndUserId(award, judge)).thenReturn(true);
+		var idea = mock(wtf.hackhub.domain.Idea.class);
+		when(idea.getHackathonId()).thenReturn(UUID.randomUUID());
+		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(idea));
+		assertThatThrownBy(() -> submitScore.execute(award, ideaId, judge, null, 8, ""))
+				.isInstanceOf(IllegalArgumentException.class);
+		verifyNoInteractions(scoreRepository);
+	}
+
+	@Test
+	void rejects_incomplete_atomic_evaluation_without_writing_scores() {
+		UUID award = UUID.randomUUID(), judge = UUID.randomUUID(), criterion = UUID.randomUUID();
+		when(judgeRepository.existsByHackathonIdAndUserId(award, judge)).thenReturn(true);
+		when(criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(award)).thenReturn(List.of());
+		assertThatThrownBy(() -> submitScore.submitEvaluation(award, UUID.randomUUID(), judge,
+				List.of(new SubmitJudgeScoreUseCase.CriterionScore(criterion, 8)), "Evidence"))
+				.isInstanceOf(IllegalArgumentException.class);
+		verifyNoInteractions(scoreRepository);
+	}
+
 }

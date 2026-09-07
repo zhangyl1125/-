@@ -5,18 +5,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { Header } from './Header'
 import { LanguageProvider } from '../../contexts/LanguageContext'
 
-// Mock SVG imports
-vi.mock('../../../assets/black_banner.svg', () => ({ default: 'black_banner.svg' }))
-
 // Mock authStore
 vi.mock('../../store/authStore', () => ({
   useAuthStore: vi.fn(),
-}))
-
-// Mock NotificationCenter so we don't need its full dependencies
-vi.mock('../NotificationCenter', () => ({
-  NotificationCenter: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="notification-center">Notifications</div> : null,
 }))
 
 import { useAuthStore } from '../../store/authStore'
@@ -55,18 +46,17 @@ describe('Header', () => {
   it('renders the user name', () => {
     renderHeader()
     expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('Digital Award')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'BOSCH' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Bosch Digital Award home' })).toHaveAttribute('href', '/')
+    expect(screen.queryByText('2026 Award')).not.toBeInTheDocument()
   })
 
-  it('renders the user role', () => {
+  it('keeps the account role in the account menu', async () => {
     renderHeader()
-    expect(screen.getByText('参与者')).toBeInTheDocument()
-  })
-
-  it('renders the notification bell button', () => {
-    renderHeader()
-    // The bell icon ActionIcon should be present
-    const bells = document.querySelectorAll('[data-testid], button, [role="button"]')
-    expect(bells.length).toBeGreaterThan(0)
+    expect(screen.queryByText('参与者')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Alice' }))
+    expect(await screen.findByText('参与者')).toBeInTheDocument()
   })
 
   it('defaults to Chinese and toggles to English', () => {
@@ -79,18 +69,6 @@ describe('Header', () => {
     expect(englishToggle).toHaveTextContent('EN')
     expect(englishToggle).not.toHaveTextContent('中')
     expect(localStorage.getItem('hackhub-language')).toBe('en')
-  })
-
-  it('opens notification center when bell is clicked', () => {
-    renderHeader()
-    // Find the notification bell ActionIcon (contains SVG icon)
-    const buttons = screen.getAllByRole('button')
-    // The first ActionIcon-style button is the bell
-    const bellBtn = buttons.find(b => b.querySelector('svg'))
-    if (bellBtn) {
-      fireEvent.click(bellBtn)
-      expect(screen.getByTestId('notification-center')).toBeInTheDocument()
-    }
   })
 
   it('user menu trigger is clickable', () => {

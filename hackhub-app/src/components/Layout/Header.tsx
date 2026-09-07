@@ -1,30 +1,23 @@
-import blackBanner from '../../../assets/black_banner.svg'
 import {
   Group,
+  Box,
   Burger,
   Text,
   Avatar,
   Menu,
   UnstyledButton,
-  ActionIcon,
-  useMantineColorScheme,
   rem,
-  Indicator,
-  Image,
 } from '@mantine/core'
 import {
-  IconSun,
-  IconMoon,
   IconUser,
-  IconSettings,
   IconLogout,
-  IconBell,
 } from '@tabler/icons-react'
-import { useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { useNavigate } from 'react-router-dom'
-import { NotificationCenter } from '../NotificationCenter'
 import { useLanguage } from '../../contexts/LanguageContext'
+import '../../pages/DigitalPioneer.css'
+import { AwardBrand } from './AwardBrand'
+import { Sidebar } from './Sidebar'
 
 interface HeaderProps {
   opened: boolean
@@ -32,10 +25,8 @@ interface HeaderProps {
 }
 
 export function Header({ opened, toggle }: HeaderProps) {
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const { language, toggleLanguage, t } = useLanguage()
 
   const roleLabel = !user
@@ -43,7 +34,7 @@ export function Header({ opened, toggle }: HeaderProps) {
     : user.role === 'admin'
     ? t('dashboard.administrator')
     : user.role === 'manager'
-      ? t('dashboard.manager')
+      ? (language === 'zh' ? '评选管理者' : 'Award manager')
       : t('dashboard.participant')
 
   const handleLogout = async () => {
@@ -56,62 +47,28 @@ export function Header({ opened, toggle }: HeaderProps) {
   }
 
   return (
-    <Group h="100%" px="md" justify="space-between">
-      <Group>
-        <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-        <Text size="xl" fw={700} c="blue">
-          <Image
-            src={blackBanner}
-            alt="HackHub"
-            h={50}
-            w="auto"
-            fit="contain"
-            style={{ filter: colorScheme === 'dark' ? 'invert(1)' : 'none' }}
-          />
-        </Text>
+    <Group h="100%" px={{ base: 12, sm: 'md' }} justify="space-between" wrap="nowrap" gap={8}>
+      <Group className="dp-header-leading" gap={8}>
+        <Burger opened={opened} onClick={toggle} hiddenFrom="90em" size="sm" aria-label={language === 'zh' ? '切换导航菜单' : 'Toggle navigation'} />
+        <AwardBrand />
       </Group>
 
-      <Group>
+      <Box visibleFrom="90em" className="dp-header-navigation"><Sidebar horizontal /></Box>
+
+      <Group className="dp-header-actions" gap={8}>
         <UnstyledButton
+          className="dp-language-switch"
           onClick={toggleLanguage}
           aria-label={language === 'zh' ? '切换到英文' : 'Switch to Chinese'}
         >
-          <Text size="sm" fw={500} c="blue">
+          <Text size="sm" fw={600}>
             {language === 'zh' ? '中' : 'EN'}
           </Text>
         </UnstyledButton>
 
-        {/* Notifications */}
-        <Indicator 
-          disabled={false} 
-          color="red" 
-          size={8}
-          processing
-        >
-          <ActionIcon
-            variant="subtle"
-            onClick={() => setNotificationsOpen(!notificationsOpen)}
-            size="md"
-          >
-            <IconBell style={{ width: rem(18), height: rem(18) }} />
-          </ActionIcon>
-        </Indicator>
-
-        <ActionIcon
-          variant="subtle"
-          onClick={() => toggleColorScheme()}
-          size="md"
-        >
-          {colorScheme === 'dark' ? (
-            <IconSun style={{ width: rem(18), height: rem(18) }} />
-          ) : (
-            <IconMoon style={{ width: rem(18), height: rem(18) }} />
-          )}
-        </ActionIcon>
-
         <Menu shadow="md" width={200}>
           <Menu.Target>
-            <UnstyledButton>
+            <UnstyledButton className="dp-user-button" aria-label={user?.name || t('header.account')}>
               <Group gap="sm">
                 <Avatar
                   src={user?.avatar}
@@ -119,12 +76,9 @@ export function Header({ opened, toggle }: HeaderProps) {
                   radius="xl"
                   size="sm"
                 />
-                <div style={{ flex: 1 }}>
+                <div className="dp-header-user-copy" style={{ flex: 1 }}>
                   <Text size="sm" fw={500}>
                     {user?.name}
-                  </Text>
-                  <Text c="dimmed" size="xs">
-                    {roleLabel}
                   </Text>
                 </div>
               </Group>
@@ -132,20 +86,13 @@ export function Header({ opened, toggle }: HeaderProps) {
           </Menu.Target>
 
           <Menu.Dropdown>
-            <Menu.Label>{t('header.account')}</Menu.Label>
+            <Menu.Label>{roleLabel || t('header.account')}</Menu.Label>
             <Menu.Item
               leftSection={<IconUser style={{ width: rem(14), height: rem(14) }} />}
               onClick={() => navigate('/profile')}
             >
               {t('header.profile')}
             </Menu.Item>
-            <Menu.Item
-              leftSection={<IconSettings style={{ width: rem(14), height: rem(14) }} />}
-              onClick={() => navigate('/profile')}
-            >
-              {t('header.settings')}
-            </Menu.Item>
-
             <Menu.Divider />
 
             <Menu.Item
@@ -158,11 +105,6 @@ export function Header({ opened, toggle }: HeaderProps) {
           </Menu.Dropdown>
         </Menu>
       </Group>
-      
-      <NotificationCenter 
-        isOpen={notificationsOpen}
-        onClose={() => setNotificationsOpen(false)}
-      />
     </Group>
   )
 }

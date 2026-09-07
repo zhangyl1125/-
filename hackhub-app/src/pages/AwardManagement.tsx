@@ -1,0 +1,147 @@
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { Alert, Badge, Button, Card, Container, Group, Select, Stack, Text, Title } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { useAuthStore } from '../store/authStore'
+import { HackathonService, type Hackathon } from '../services/hackathonService'
+import { JudgingService, type HackathonJudge } from '../services/judgingService'
+import { OrganizationService } from '../services/organizationService'
+import { getAllPages } from '../services/pagination'
+import { api } from '../lib/apiClient'
+import { DIGITAL_PIONEER_RUBRIC } from '../config/digitalPioneer'
+import { VotingCriteriaManager } from '../components/VotingCriteriaManager'
+import './DigitalPioneer.css'
+
+export function AwardManagement() {
+  const { id } = useParams<{ id: string }>()
+  const { user } = useAuthStore()
+  const [campaigns, setCampaigns] = useState<Hackathon[]>([])
+  const [judges, setJudges] = useState<HackathonJudge[]>([])
+  const [members, setMembers] = useState<Array<{ value: string; label: string }>>([])
+  const [invitee, setInvitee] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const campaign = campaigns.find((item) => item.id === id)
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const campaigns = await getAllPages((page) => HackathonService.getHackathons(page, 100))
+        const assignments = await Promise.all(campaigns.map(async (item) => ({
+          campaign: item,
+          judges: await JudgingService.getJudges(item.id),
+        })))
+        if (!active) return
+        setCampaigns(assignments.filter((item) => canManage || item.judges.some((judge) => judge.userId === user?.id)).map((item) => item.campaign))
+        setJudges(assignments.find((item) => item.campaign.id === id)?.judges ?? [])
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : 'Unable to load award campaigns.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    void load()
+    return () => { active = false }
+  }, [id, user?.id, canManage])
+
+  useEffect(() => {
+    if (!canManage || !id) return
+    let active = true
+    const loadMembers = async () => {
+      try {
+        const options = user?.role === 'admin'
+          ? (await getAllPages((page) => api.get<{ content: Array<{ id: string; name: string; email: string }>; totalPages?: number }>(`/api/v1/admin/users?page=${page}&size=200&sort=name,asc`))).map((member) => ({ value: member.id, label: `${member.name} (${member.email})` }))
+          : (await Promise.all((await OrganizationService.getMyOrganizations()).map(async (org) =>
+              (await OrganizationService.getMembers(org.id)).map((member) => ({ value: member.userId, label: `${member.name ?? member.email} (${member.email ?? ''})` }))
+            ))).flat()
+        if (active) setMembers([...new Map(options.map((option) => [option.value, option])).values()])
+      } catch {
+        if (active) setError('Unable to load associates for committee assignment. Refresh to retry.')
+      }
+    }
+    void loadMembers()
+    return () => { active = false }
+  }, [canManage, id, user?.role])
+
+  const mutate = async (operation: () => Promise<void>) => {
+    setBusy(true)
+    try {
+      await operation()
+      notifications.show({ title: 'Saved', message: 'Award settings updated.', color: 'green' })
+    } catch (cause) {
+      notifications.show({ title: 'Unable to save', message: cause instanceof Error ? cause.message : 'Try again.', color: 'red' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Container size={1240} py="xl" className="dp-page">
+      <Stack gap="xl">
+        <Group justify="space-between">
+          <div>
+            <Title order={1}>{canManage ? 'Award management' : 'Committee scoring'}</Title>
+          </div>
+          {canManage && <Button component={Link} to="/hackathons/create" className="dp-primary-button">Create award campaign</Button>}
+        </Group>
+        {error && <Alert color="red" role="alert">{error}</Alert>}
+        {loading ? <Text role="status">Loading award campaigns…</Text> : !id ? (
+          campaigns.length ? campaigns.map((item) => (
+            <Card key={item.id} className="dp-form-shell" p="lg">
+              <Group justify="space-between">
+                <div><Title order={3}>{item.title}</Title><Text c="dimmed" mt="xs">{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</Text></div>
+                <Badge>{item.status}</Badge>
+              </Group>
+              <Group mt="lg">
+                {canManage && <Button component={Link} to={`/awards/${item.id}`} variant="default">Campaign settings</Button>}
+                <Button component={Link} to={`/hackathons/${item.id}/judge`}>Committee scoring</Button>
+                {canManage && <Button component={Link} to={`/hackathons/${item.id}/leaderboard`} variant="light">Scores & rankings</Button>}
+              </Group>
+            </Card>
+          )) : <Text>No award campaigns are available{canManage ? '.' : ' for your committee account.'}</Text>
+        ) : !campaign ? <Alert color="orange">This award campaign is unavailable.</Alert> : (
+          <>
+            <Card className="dp-form-shell" p="lg">
+              <Group justify="space-between"><Title order={2}>{campaign.title}</Title><Badge>{campaign.status}</Badge></Group>
+              <Text mt="md">{campaign.description}</Text>
+              <Group mt="lg">
+                <Button component={Link} to={`/hackathons/${id}/judge`}>Committee scoring</Button>
+                {canManage && <Button component={Link} to={`/hackathons/${id}/leaderboard`} variant="light">Scores & rankings</Button>}
+                {canManage && <Button component={Link} to={`/hackathons/${id}/edit`} variant="default">Edit campaign & dates</Button>}
+              </Group>
+              {canManage && <Select mt="lg" maw={360} label="Campaign status" description="Running campaigns accept associate votes; completed campaigns close voting." value={campaign.status} disabled={busy}
+                data={[{ value: 'draft', label: 'Draft' }, { value: 'open', label: 'Open' }, { value: 'running', label: 'Running' }, { value: 'completed', label: 'Completed' }]}
+                onChange={(value) => { if (value) void mutate(async () => {
+                  const updated = await HackathonService.transitionStatus(campaign.id, value as Hackathon['status'])
+                  setCampaigns((current) => current.map((item) => item.id === updated.id ? updated : item))
+                }) }} />}
+            </Card>
+            {canManage && <Card className="dp-form-shell" p="lg">
+              <Title order={3}>Committee members</Title>
+              <Stack mt="md">
+                {judges.map((judge) => <Group key={judge.id} justify="space-between">
+                  <Text>{judge.name ?? judge.userId} · {judge.email}</Text>
+                  <Button size="sm" variant="subtle" color="red" disabled={busy} onClick={() => void mutate(async () => { await JudgingService.removeJudge(campaign.id, judge.userId); setJudges((current) => current.filter((item) => item.userId !== judge.userId)) })}>Remove</Button>
+                </Group>)}
+                {!judges.length && <Text c="dimmed">No committee members assigned yet.</Text>}
+                <Select label="Assign an associate" searchable value={invitee} onChange={setInvitee} data={members.filter((member) => !judges.some((judge) => judge.userId === member.value))} />
+                <Button w="fit-content" loading={busy} disabled={!invitee} onClick={() => void mutate(async () => { if (!invitee) return; const added = await JudgingService.inviteJudge(campaign.id, invitee); setJudges((current) => [...current, added]); setInvitee(null) })}>Assign committee member</Button>
+              </Stack>
+            </Card>}
+            {canManage && <VotingCriteriaManager hackathonId={campaign.id} isManager />}
+            <Card className="dp-form-shell" p="lg">
+              <Title order={3}>Evaluation standard</Title>
+              {DIGITAL_PIONEER_RUBRIC.map((criterion) => <Text key={criterion.key} mt="md"><strong>{criterion.name} · {criterion.weight}%</strong><br />{criterion.description}</Text>)}
+              {canManage && <Text mt="lg" c="dimmed">Associate voting: 4 votes per category, at most 2 within the voter's own department. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
+            </Card>
+          </>
+        )}
+      </Stack>
+    </Container>
+  )
+}

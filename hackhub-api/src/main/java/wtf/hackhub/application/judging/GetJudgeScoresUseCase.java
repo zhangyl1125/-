@@ -6,9 +6,11 @@ import wtf.hackhub.domain.Hackathon;
 import wtf.hackhub.domain.Idea;
 import wtf.hackhub.domain.JudgeScore;
 import wtf.hackhub.domain.Team;
+import wtf.hackhub.domain.VotingCriteria;
 import wtf.hackhub.infrastructure.persistence.hackathon.HackathonRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaScoreRepository;
+import wtf.hackhub.infrastructure.persistence.idea.VotingCriteriaRepository;
 import wtf.hackhub.infrastructure.persistence.judging.JudgeScoreRepository;
 import wtf.hackhub.infrastructure.persistence.team.TeamRepository;
 
@@ -29,15 +31,17 @@ public class GetJudgeScoresUseCase {
 	private final IdeaScoreRepository ideaScoreRepository;
 	private final HackathonRepository hackathonRepository;
 	private final TeamRepository teamRepository;
+	private final VotingCriteriaRepository criteriaRepository;
 
 	public GetJudgeScoresUseCase(JudgeScoreRepository judgeScoreRepository, IdeaRepository ideaRepository,
 			IdeaScoreRepository ideaScoreRepository, HackathonRepository hackathonRepository,
-			TeamRepository teamRepository) {
+			TeamRepository teamRepository, VotingCriteriaRepository criteriaRepository) {
 		this.judgeScoreRepository = judgeScoreRepository;
 		this.ideaRepository = ideaRepository;
 		this.ideaScoreRepository = ideaScoreRepository;
 		this.hackathonRepository = hackathonRepository;
 		this.teamRepository = teamRepository;
+		this.criteriaRepository = criteriaRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -59,6 +63,7 @@ public class GetJudgeScoresUseCase {
 		Map<UUID, List<JudgeScore>> judgeScoresByIdea = allJudgeScores.stream()
 				.collect(Collectors.groupingBy(JudgeScore::getIdeaId));
 
+		List<VotingCriteria> criteria = criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(hackathonId);
 		int panelWeight = hackathon.getPanelWeight();
 		int communityWeight = 100 - panelWeight;
 
@@ -66,19 +71,16 @@ public class GetJudgeScoresUseCase {
 
 		for (Idea idea : ideas) {
 			List<JudgeScore> panelScores = judgeScoresByIdea.getOrDefault(idea.getId(), List.of());
-			double panelAvg = panelScores.isEmpty()
-					? 0.0
-					: panelScores.stream().mapToInt(JudgeScore::getScore).average().orElse(0.0);
+			int judgeCount = completedJudgeCount(panelScores, criteria);
+			BigDecimal panelScore = judgeCount == 0 ? null : weightedPanelScore(panelScores, criteria);
 
 			int communityVoterCount = ideaScoreRepository.countDistinctVoters(idea.getId());
 			BigDecimal communityScore = ideaScoreRepository.calculateWeightedScore(idea.getId(), hackathonId);
 
-			BigDecimal panelScore = BigDecimal.valueOf(panelAvg).setScale(2, RoundingMode.HALF_UP);
-
 			BigDecimal blendedScore = switch (hackathon.getJudgingMode()) {
 				case PANEL -> panelScore;
 				case COMMUNITY -> communityScore;
-				case BLENDED -> panelScore.multiply(BigDecimal.valueOf(panelWeight))
+				case BLENDED -> (panelScore == null ? BigDecimal.ZERO : panelScore).multiply(BigDecimal.valueOf(panelWeight))
 						.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP)
 						.add(communityScore.multiply(BigDecimal.valueOf(communityWeight))
 								.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP))
@@ -90,22 +92,55 @@ public class GetJudgeScoresUseCase {
 					: teamRepository.findById(idea.getTeamId()).map(Team::getName).orElse(null);
 
 			summaries.add(new ScoreSummary(idea.getId(), idea.getTitle(), panelScore, communityScore, blendedScore,
-					communityVoterCount, idea.getTeamId(), teamName, 0));
+					communityVoterCount, idea.getTeamId(), teamName, 0, judgeCount, idea.getVotes()));
 		}
 
-		summaries.sort(Comparator.comparing(ScoreSummary::blendedScore).reversed());
+		summaries.sort(Comparator.comparing(ScoreSummary::blendedScore, Comparator.nullsLast(Comparator.reverseOrder()))
+				.thenComparing(ScoreSummary::ideaTitle).thenComparing(ScoreSummary::ideaId));
 
 		List<ScoreSummary> ranked = new ArrayList<>();
+		int rank = 0;
+		BigDecimal previousScore = null;
 		for (int i = 0; i < summaries.size(); i++) {
 			ScoreSummary s = summaries.get(i);
+			if (s.blendedScore() != null && (previousScore == null || previousScore.compareTo(s.blendedScore()) != 0)) rank = i + 1;
+			previousScore = s.blendedScore();
 			ranked.add(new ScoreSummary(s.ideaId(), s.ideaTitle(), s.panelScore(), s.communityScore(), s.blendedScore(),
-					s.communityVoterCount(), s.teamId(), s.teamName(), i + 1));
+					s.communityVoterCount(), s.teamId(), s.teamName(), s.blendedScore() == null ? 0 : rank, s.judgeCount(), s.voteCount()));
 		}
 		return ranked;
 	}
 
+	static int completedJudgeCount(List<JudgeScore> scores, List<VotingCriteria> criteria) {
+		var byJudge = scores.stream().collect(Collectors.groupingBy(JudgeScore::getJudgeId));
+		return (int) byJudge.values().stream().filter(judgeScores -> criteria.stream().allMatch(c ->
+				judgeScores.stream().anyMatch(s -> c.getId().equals(s.getCriterionId())))).count();
+	}
+
+	static BigDecimal weightedPanelScore(List<JudgeScore> scores, List<VotingCriteria> criteria) {
+		if (criteria.isEmpty()) {
+			return BigDecimal.valueOf(scores.stream().mapToInt(JudgeScore::getScore).average().orElse(0))
+					.setScale(2, RoundingMode.HALF_UP);
+		}
+		int weight = criteria.stream().mapToInt(VotingCriteria::getWeight).sum();
+		if (weight <= 0) return BigDecimal.ZERO;
+		var byJudge = scores.stream().collect(Collectors.groupingBy(JudgeScore::getJudgeId));
+		BigDecimal total = BigDecimal.ZERO;
+		int completed = 0;
+		for (var judgeScores : byJudge.values()) {
+			var byCriterion = judgeScores.stream().filter(s -> s.getCriterionId() != null)
+					.collect(Collectors.toMap(JudgeScore::getCriterionId, JudgeScore::getScore, (a, b) -> b));
+			if (!criteria.stream().allMatch(c -> byCriterion.containsKey(c.getId()))) continue;
+			BigDecimal weighted = criteria.stream().map(c -> BigDecimal.valueOf((long) byCriterion.get(c.getId()) * c.getWeight()))
+					.reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(weight), 8, RoundingMode.HALF_UP);
+			total = total.add(weighted);
+			completed++;
+		}
+		return completed == 0 ? BigDecimal.ZERO : total.divide(BigDecimal.valueOf(completed), 2, RoundingMode.HALF_UP);
+	}
+
 	public record ScoreSummary(UUID ideaId, String ideaTitle, BigDecimal panelScore, BigDecimal communityScore,
-			BigDecimal blendedScore, int communityVoterCount, UUID teamId, String teamName, int rank) {
+			BigDecimal blendedScore, int communityVoterCount, UUID teamId, String teamName, int rank, int judgeCount, int voteCount) {
 	}
 
 	public static class HackathonNotFoundException extends RuntimeException {

@@ -281,15 +281,15 @@ export function AdminUsers() {
     if (PermissionService.isAdmin(user!)) {
       // Admins can create any role
       return [
-        { value: 'participant', label: '👤 User - Team leader permissions only' },
-        { value: 'manager', label: '👨‍💼 Manager - Own hackathons only' },
+        { value: 'participant', label: 'Associate - Nominate and vote' },
+        { value: 'manager', label: 'Manager - Manage assigned award campaigns' },
         { value: 'admin', label: '👑 Admin - Master access to everything' },
       ]
     } else if (PermissionService.isManagerOrAbove(user!)) {
       // Managers can only create users and other managers
       return [
-        { value: 'participant', label: '👤 User - Team leader permissions only' },
-        { value: 'manager', label: '👨‍💼 Manager - Own hackathons only' },
+        { value: 'participant', label: 'Associate - Nominate and vote' },
+        { value: 'manager', label: 'Manager - Manage assigned award campaigns' },
       ]
     }
     return []

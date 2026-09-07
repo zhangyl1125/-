@@ -1,11 +1,13 @@
 package wtf.hackhub.application.idea;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import wtf.hackhub.domain.Idea;
 import wtf.hackhub.domain.IdeaVote;
 import wtf.hackhub.domain.Profile;
 import wtf.hackhub.domain.VotingParticipant;
+import wtf.hackhub.infrastructure.persistence.IdeaMutationLock;
 import wtf.hackhub.infrastructure.persistence.auth.ProfileRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaVoteRepository;
@@ -27,8 +29,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class VoteIdeaUseCase {
-	private static final int MAX_VOTES_PER_HACKATHON = 4;
-	private static final int MAX_OWN_DEPARTMENT_VOTES = 2;
+	private final IdeaMutationLock mutationLock;
+	private static final int MAX_VOTES_PER_TRACK = 4;
+	private static final int MAX_OWN_DEPARTMENT_VOTES_PER_TRACK = 2;
 	private static final Pattern NAME_TOKEN = Pattern.compile("[a-z0-9]+");
 
 	private final IdeaRepository ideaRepository;
@@ -37,8 +40,9 @@ public class VoteIdeaUseCase {
 	private final VotingParticipantRepository participantRepository;
 
 	public VoteIdeaUseCase(IdeaRepository ideaRepository, IdeaVoteRepository voteRepository,
-			ProfileRepository profileRepository, VotingParticipantRepository participantRepository) {
+			ProfileRepository profileRepository, VotingParticipantRepository participantRepository, IdeaMutationLock mutationLock) {
 		this.ideaRepository = ideaRepository;
+		this.mutationLock = mutationLock;
 		this.voteRepository = voteRepository;
 		this.profileRepository = profileRepository;
 		this.participantRepository = participantRepository;
@@ -49,6 +53,7 @@ public class VoteIdeaUseCase {
 
 	@Transactional
 	public Result execute(UUID ideaId, UUID userId) {
+		mutationLock.acquire(ideaId);
 		Idea idea = ideaRepository.findById(ideaId).orElseThrow(() -> new IdeaNotFoundException(ideaId));
 		Profile voterProfile = profileRepository.findByIdForUpdate(userId)
 				.orElseThrow(() -> new ParticipantNotEligibleException(userId));
@@ -65,19 +70,23 @@ public class VoteIdeaUseCase {
 		VotingParticipant voter = resolveParticipant(voterProfile)
 				.orElseThrow(() -> new ParticipantNotEligibleException(userId));
 		List<IdeaVote> currentVotes = voteRepository.findAllByUserIdAndHackathonId(userId, idea.getHackathonId());
-		if (currentVotes.size() >= MAX_VOTES_PER_HACKATHON) {
-			throw new VoteLimitExceededException(MAX_VOTES_PER_HACKATHON);
+		List<Idea> currentTrackIdeas = currentVotes.stream().map(IdeaVote::getIdeaId).map(ideaRepository::findById)
+				.flatMap(Optional::stream).filter(votedIdea -> idea.getCategory().equalsIgnoreCase(votedIdea.getCategory()))
+				.toList();
+		if (currentTrackIdeas.size() >= MAX_VOTES_PER_TRACK) {
+			throw new VoteLimitExceededException(MAX_VOTES_PER_TRACK);
 		}
 
 		VotingParticipant projectOwner = resolveProjectOwner(idea);
 		String voterDepartment = departmentCode(voter.getOrganizationalUnit());
 		String projectDepartment = departmentCode(projectOwner.getOrganizationalUnit());
 		if (voterDepartment.equalsIgnoreCase(projectDepartment)) {
-			long ownDepartmentVotes = currentVotes.stream().map(IdeaVote::getIdeaId).map(ideaRepository::findById)
-					.flatMap(Optional::stream).map(this::resolveProjectOwner).map(VotingParticipant::getOrganizationalUnit)
+			long ownDepartmentVotes = currentTrackIdeas.stream().map(this::resolveProjectOwner)
+					.map(VotingParticipant::getOrganizationalUnit)
 					.map(VoteIdeaUseCase::departmentCode).filter(voterDepartment::equalsIgnoreCase).count();
-			if (ownDepartmentVotes >= MAX_OWN_DEPARTMENT_VOTES) {
-				throw new OwnDepartmentVoteLimitExceededException(voterDepartment, MAX_OWN_DEPARTMENT_VOTES);
+			if (ownDepartmentVotes >= MAX_OWN_DEPARTMENT_VOTES_PER_TRACK) {
+				throw new OwnDepartmentVoteLimitExceededException(voterDepartment,
+						MAX_OWN_DEPARTMENT_VOTES_PER_TRACK);
 			}
 		}
 
@@ -87,20 +96,35 @@ public class VoteIdeaUseCase {
 	}
 
 	private VotingParticipant resolveProjectOwner(Idea idea) {
-		Profile profile = profileRepository.findById(idea.getCreatedBy())
+		Profile profile = profileRepository.findById(nomineeId(idea))
 				.orElseThrow(() -> new ProjectDepartmentUnknownException(idea.getId()));
 		return resolveParticipant(profile).orElseThrow(() -> new ProjectDepartmentUnknownException(idea.getId()));
 	}
 
-	private Optional<VotingParticipant> resolveParticipant(Profile profile) {
-		Optional<VotingParticipant> byName = uniqueParticipant(normalizeIdentity(profile.getName()));
-		if (byName.isPresent())
-			return byName;
+	static UUID nomineeId(Idea idea) {
+		if (idea.getProjectAttachments() == null || idea.getProjectAttachments().isBlank()) return idea.getCreatedBy();
+		try {
+			var attachments = new ObjectMapper().readTree(idea.getProjectAttachments());
+			for (var attachment : attachments) {
+				if ("nomination".equals(attachment.path("type").asText()) && attachment.hasNonNull("nomineeUserId")) {
+					return UUID.fromString(attachment.get("nomineeUserId").asText());
+				}
+			}
+		} catch (Exception ex) {
+			throw new ProjectDepartmentUnknownException(idea.getId());
+		}
+		return idea.getCreatedBy();
+	}
 
+	private Optional<VotingParticipant> resolveParticipant(Profile profile) {
 		String emailLocalPart = profile.getEmail().split("@", 2)[0].replaceFirst("(?i)^fixed-term[._-]*", "");
 		Optional<VotingParticipant> byEmail = uniqueParticipant(normalizeIdentity(emailLocalPart));
 		if (byEmail.isPresent())
 			return byEmail;
+
+		Optional<VotingParticipant> byName = uniqueParticipant(normalizeIdentity(profile.getName()));
+		if (byName.isPresent())
+			return byName;
 
 		// Platform administrators need to verify the voting flow even when they are
 		// not members of the imported BD roster. Keep them in one explicit virtual
@@ -156,7 +180,7 @@ public class VoteIdeaUseCase {
 
 	public static class VoteLimitExceededException extends RuntimeException {
 		public VoteLimitExceededException(int limit) {
-			super("Each participant can cast at most " + limit + " votes per hackathon.");
+			super("Each participant can cast at most " + limit + " votes per award category.");
 		}
 	}
 

@@ -1,6 +1,6 @@
 .PHONY: up up-infra down down-clean ps logs \
         build build-api build-app \
-        test-all test-api test-app test-e2e test-e2e-clean reset-db \
+        test-all test-all-with-integration test-api test-api-integration test-app test-e2e test-e2e-clean reset-db \
         lint lint-api lint-app \
         migrate migrate-info seed clean \
         test-features-sync sdlc-report sdlc-rotate-logs sdlc-branch-protection help
@@ -56,11 +56,11 @@ test-all-with-integration: test-api test-api-integration test-app test-e2e
 
 ## Spring Boot unit tests + coverage gate (JaCoCo ≥80%)
 test-api:
-	cd hackhub-api && ./mvnw verify -DskipSpotlessCheck
+	docker compose --profile test build api-unit-test
 
-## Spring Boot integration tests (requires Docker for TestContainers)
+## Spring Boot integration tests on Java 21 (requires Docker for Testcontainers)
 test-api-integration:
-	cd hackhub-api && ./mvnw test -Pintegration
+	docker compose --profile test run --build --rm api-integration-test
 
 ## Frontend Vitest suite
 test-app:

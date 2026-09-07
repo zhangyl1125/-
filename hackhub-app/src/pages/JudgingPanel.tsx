@@ -1,467 +1,457 @@
-import React, { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import type { ReactElement } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Container,
-  Stack,
-  Title,
-  Text,
-  Card,
-  Group,
+  Accordion,
+  ActionIcon,
+  Alert,
   Badge,
   Button,
-  Slider,
-  Loader,
-  Alert,
+  Card,
   Center,
-  ThemeIcon,
-  rem,
-  Divider,
-  Paper,
+  Container,
+  Grid,
+  Group,
+  Loader,
   Progress,
-  ActionIcon,
+  Select,
+  Slider,
+  Stack,
+  Text,
+  Textarea,
+  ThemeIcon,
+  Title,
   Tooltip,
 } from '@mantine/core'
 import {
-  IconTrophy,
   IconAlertCircle,
-  IconCheck,
   IconArrowLeft,
-  IconBulb,
-  IconUsers,
-  IconStar,
-  IconChevronDown,
-  IconChevronUp,
+  IconCheck,
+  IconClipboardCheck,
+  IconExternalLink,
+  IconScale,
+  IconTrophy,
 } from '@tabler/icons-react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
+import { DIGITAL_PIONEER_RECOMMENDATIONS, DIGITAL_PIONEER_RUBRIC } from '../config/digitalPioneer'
 import { useAuthStore } from '../store/authStore'
-import { VotingService } from '../services/votingService'
-import { IdeaService } from '../services/ideaService'
-import { JudgingService } from '../services/judgingService'
-import { PermissionService } from '../utils/permissions'
+import { loadAllNominations, officialCriteria, savedEvaluation } from '../utils/committeeScoring'
+import type { JudgeScore } from '../services/judgingService'
 import type { Idea } from '../services/ideaService'
+import { JudgingService } from '../services/judgingService'
+import { VotingService } from '../services/votingService'
 import type { VotingCriteria } from '../services/votingService'
+import { PermissionService } from '../utils/permissions'
+import './DigitalPioneer.css'
 
 interface IdeaScores {
   [criteriaId: string]: number
 }
 
-interface ScoredIdea {
+interface ScoreSubmission {
   ideaId: string
   scores: IdeaScores
+  recommendation: string
+  comment: string
+}
+
+function getScoreTone(score: number): string {
+  if (score >= 9) return 'grape'
+  if (score >= 7) return 'green'
+  if (score >= 5) return 'yellow'
+  return 'red'
+}
+
+function getScoreLabel(score: number, impact: boolean): string {
+  if (score >= 9) return impact ? 'Significant' : 'Benchmark'
+  if (score >= 7) return impact ? 'Noticeable' : 'Strong'
+  if (score >= 5) return 'Marginal'
+  return impact ? 'Limited' : 'Non-compliant'
+}
+
+function matchingRubric(criterion: VotingCriteria, index: number) {
+  const normalized = criterion.name.toLowerCase()
+  if (normalized.includes('impact') || normalized.includes('business')) return DIGITAL_PIONEER_RUBRIC[1]
+  if (normalized.includes('behavior') || normalized.includes('behaviour')) return DIGITAL_PIONEER_RUBRIC[0]
+  return DIGITAL_PIONEER_RUBRIC[Math.min(index, DIGITAL_PIONEER_RUBRIC.length - 1)]
+}
+
+interface IdeaJudgingCardProps {
+  idea: Idea
+  criteria: VotingCriteria[]
+  onSubmit: (submission: ScoreSubmission) => void
+  isSubmitting: boolean
+  alreadyScored: boolean
+  savedScores: JudgeScore[]
+  canSubmitRating: boolean
 }
 
 function IdeaJudgingCard({
   idea,
   criteria,
-  onScoreSubmit,
+  onSubmit,
   isSubmitting,
   alreadyScored,
-}: {
-  idea: Idea
-  criteria: VotingCriteria[]
-  onScoreSubmit: (ideaId: string, scores: IdeaScores) => void
-  isSubmitting: boolean
-  alreadyScored: boolean
-}) {
+  savedScores,
+  canSubmitRating,
+}: IdeaJudgingCardProps): ReactElement {
+  const nominee = idea.projectAttachments?.find((attachment) => attachment.type === 'nomination')
+  const saved = savedEvaluation(savedScores)
   const [scores, setScores] = useState<IdeaScores>(() =>
-    Object.fromEntries(criteria.map((c) => [c.id, 5]))
+    Object.fromEntries(criteria.map((criterion) => [criterion.id, saved.scores[criterion.id] ?? 7]))
   )
-  const [expanded, setExpanded] = useState(false)
+  const [recommendation, setRecommendation] = useState<string | null>(saved.recommendation)
+  const [comment, setComment] = useState(saved.comment)
 
-  const allScored = criteria.every((c) => scores[c.id] !== undefined)
-  const averageScore =
-    criteria.length > 0
-      ? criteria.reduce((sum, c) => sum + (scores[c.id] ?? 5) * (c.weight / 100), 0)
-      : 0
-
-  const getScoreColor = (score: number): string => {
-    if (score >= 8) return 'green'
-    if (score >= 6) return 'blue'
-    if (score >= 4) return 'yellow'
-    return 'red'
-  }
-
-  const getScoreLabel = (score: number): string => {
-    if (score >= 9) return 'Excellent'
-    if (score >= 7) return 'Good'
-    if (score >= 5) return 'Average'
-    if (score >= 3) return 'Below Average'
-    return 'Poor'
-  }
+  const weightedScore = criteria.reduce(
+    (total, criterion) => total + (scores[criterion.id] ?? 0) * (criterion.weight / 100),
+    0
+  )
+  const canSubmit = canSubmitRating && criteria.length > 0
+    && criteria.every((criterion) => Number.isInteger(scores[criterion.id]))
+    && recommendation !== null
 
   return (
-    <Card withBorder radius="md" p="lg">
-      <Stack gap="md">
-        <Group justify="space-between" align="flex-start">
-          <div style={{ flex: 1 }}>
-            <Group gap="sm" mb="xs">
-              <Text fw={700} size="lg">
-                {idea.title}
-              </Text>
-              {alreadyScored && (
-                <Badge color="green" variant="light" leftSection={<IconCheck size={12} />}>
-                  Scored
-                </Badge>
-              )}
+    <Card className="dp-judge-shell" p={{ base: 'lg', md: 32 }}>
+      <Grid gutter={{ base: 24, md: 38 }}>
+        <Grid.Col span={{ base: 12, lg: 4 }}>
+          <Stack gap="md" h="100%">
+            <Group justify="space-between" align="flex-start">
+              <Badge variant="light" color="grape">{idea.category}</Badge>
+              {alreadyScored ? (
+                <Badge color="teal" variant="light" leftSection={<IconCheck size={12} />}>Recorded</Badge>
+              ) : null}
             </Group>
-            <Text size="sm" c="dimmed" lineClamp={expanded ? undefined : 2}>
-              {idea.description}
-            </Text>
-            {idea.description.length > 120 && (
-              <ActionIcon
-                variant="subtle"
-                size="xs"
-                onClick={() => setExpanded((v) => !v)}
-                mt={4}
-              >
-                {expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-              </ActionIcon>
-            )}
-          </div>
-          <Stack align="flex-end" gap="xs">
-            <Badge size="lg" variant="filled" color={getScoreColor(averageScore)}>
-              {averageScore.toFixed(1)}
-            </Badge>
-            <Text size="xs" c="dimmed">
-              weighted avg
-            </Text>
-          </Stack>
-        </Group>
-
-        <Group gap="md">
-          {idea.teamId && (
+            <div>
+              <Title order={3}>{idea.title}</Title>
+              <Text size="sm" c="dimmed" mt="sm" style={{ whiteSpace: 'pre-line' }}>
+                {idea.description}
+              </Text>
+            </div>
+            <div className="dp-fieldset">
+              <Text size="sm"><b>Nominee:</b> {nominee?.name ?? 'Not provided'}</Text>
+              <Text size="sm"><b>Org. code:</b> {nominee?.nomineeOrgCode ?? 'Not provided'}</Text>
+              <Text size="sm"><b>Position:</b> {nominee?.nomineePosition ?? 'Not provided'}</Text>
+              <Text size="sm"><b>Nominating HoD:</b> {nominee?.nominatingHead ?? 'Not provided'}</Text>
+            </div>
             <Group gap="xs">
-              <IconUsers size={14} color="gray" />
-              <Text size="xs" c="dimmed">
-                Team ID: {idea.teamId.slice(0, 8)}…
-              </Text>
+              {idea.tags.slice(0, 4).map((tag) => <Badge key={tag} size="sm" variant="outline">{tag}</Badge>)}
             </Group>
-          )}
-          <Group gap="xs">
-            <IconBulb size={14} color="gray" />
-            <Text size="xs" c="dimmed">
-              {idea.category}
-            </Text>
-          </Group>
-          {idea.tags.slice(0, 3).map((tag) => (
-            <Badge key={tag} size="xs" variant="outline">
-              {tag}
-            </Badge>
-          ))}
-        </Group>
-
-        {alreadyScored ? (
-          <Alert icon={<IconCheck size={16} />} color="green" variant="light">
-            You have already scored this idea. Scores cannot be changed after submission.
-          </Alert>
-        ) : (
-          <>
-            <Divider label="Score each criterion" labelPosition="center" />
-
-            <Stack gap="lg">
-              {criteria.map((criterion) => {
-                const score = scores[criterion.id] ?? 5
-                return (
-                  <Paper key={criterion.id} p="md" withBorder radius="sm">
-                    <Stack gap="sm">
-                      <Group justify="space-between">
-                        <div>
-                          <Group gap="xs">
-                            <Text fw={600} size="sm">
-                              {criterion.name}
-                            </Text>
-                            <Badge size="xs" variant="light" color="gray">
-                              {criterion.weight}%
-                            </Badge>
-                          </Group>
-                          {criterion.description && (
-                            <Text size="xs" c="dimmed" mt={2}>
-                              {criterion.description}
-                            </Text>
-                          )}
-                        </div>
-                        <Group gap="xs" align="center">
-                          <Text
-                            fw={700}
-                            size="xl"
-                            c={getScoreColor(score)}
-                            style={{ minWidth: rem(32), textAlign: 'center' }}
-                          >
-                            {score}
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            {getScoreLabel(score)}
-                          </Text>
-                        </Group>
-                      </Group>
-                      <Slider
-                        value={score}
-                        onChange={(val) =>
-                          setScores((prev) => ({ ...prev, [criterion.id]: val }))
-                        }
-                        min={1}
-                        max={10}
-                        step={1}
-                        marks={[
-                          { value: 1, label: '1' },
-                          { value: 5, label: '5' },
-                          { value: 10, label: '10' },
-                        ]}
-                        color={getScoreColor(score)}
-                        size="lg"
-                      />
-                    </Stack>
-                  </Paper>
-                )
-              })}
+            <Stack gap="xs" mt="auto">
+              {(idea.projectAttachments ?? []).filter((attachment) => attachment.type !== 'nomination' && /^https?:\/\//i.test(attachment.url)).map((attachment) => (
+                <Button key={attachment.url} component="a" href={attachment.url} target="_blank" rel="noopener noreferrer" variant="light" rightSection={<IconExternalLink size={15} />}>{attachment.name || 'Review attachment'}</Button>
+              ))}
+              {idea.repositoryUrl ? (
+                <Button component="a" href={idea.repositoryUrl} target="_blank" variant="light" rightSection={<IconExternalLink size={15} />}>
+                  Review evidence
+                </Button>
+              ) : null}
+              {idea.demoUrl ? (
+                <Button component="a" href={idea.demoUrl} target="_blank" variant="subtle" rightSection={<IconExternalLink size={15} />}>
+                  Open demo
+                </Button>
+              ) : null}
             </Stack>
+          </Stack>
+        </Grid.Col>
+
+        <Grid.Col span={{ base: 12, lg: 8 }}>
+          <Stack gap="xl">
+            <Group justify="space-between" align="flex-end">
+              <div>
+                <Title order={3}>Score the evidence</Title>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <Text className="dp-utility" size="sm" c="dimmed">Weighted total</Text>
+                <Text className="dp-field-number" fw={700}>{weightedScore.toFixed(1)}</Text>
+              </div>
+            </Group>
+
+            {criteria.map((criterion, index) => {
+              const score = scores[criterion.id] ?? 7
+              const rubric = matchingRubric(criterion, index)
+              return (
+                <div className="dp-fieldset" key={criterion.id}>
+                  <Group justify="space-between" align="flex-start" mb="lg">
+                    <div>
+                      <Group gap="xs">
+                        <Text fw={800}>{rubric.name}</Text>
+                        <Text className="dp-score-accent" fw={700}>{rubric.nameZh}</Text>
+                        <Badge variant="filled" color="dark">{criterion.weight}%</Badge>
+                      </Group>
+                      <Text size="sm" c="dimmed" mt={5}>{rubric.description}</Text>
+                    </div>
+                    <Badge color={getScoreTone(score)} variant="light" size="lg">
+                      {score} · {getScoreLabel(score, rubric.key === 'impact')}
+                    </Badge>
+                  </Group>
+                  <Slider
+                    aria-label={`${rubric.name} score`}
+                    value={score}
+                    onChange={(value) => setScores((current) => ({ ...current, [criterion.id]: value }))}
+                    min={1}
+                    max={10}
+                    step={1}
+                    marks={[1, 4, 7, 10].map((value) => ({ value, label: String(value) }))}
+                    color={getScoreTone(score)}
+                    size="md"
+                  />
+                  <Accordion variant="contained" mt={32}>
+                    <Accordion.Item value={`${criterion.id}-guide`}>
+                      <Accordion.Control>View scoring guide</Accordion.Control>
+                      <Accordion.Panel>
+                        <Stack gap="sm">
+                          {rubric.levels.map((level) => (
+                            <Grid key={level.range} gutter="sm">
+                              <Grid.Col span={2}><Text fw={800} className="dp-score-accent">{level.range}</Text></Grid.Col>
+                              <Grid.Col span={3}><Text fw={700} size="sm">{level.label}</Text></Grid.Col>
+                              <Grid.Col span={7}><Text size="sm" c="dimmed">{level.detail}</Text></Grid.Col>
+                            </Grid>
+                          ))}
+                        </Stack>
+                      </Accordion.Panel>
+                    </Accordion.Item>
+                  </Accordion>
+                </div>
+              )
+            })}
+
+            <div className="dp-fieldset">
+              <Grid gutter="md">
+                <Grid.Col span={{ base: 12, sm: 5 }}>
+                  <Select
+                    label="Recommendation"
+                   
+                    required
+                    placeholder="Select a recommendation"
+                    data={DIGITAL_PIONEER_RECOMMENDATIONS.map(({ value, label }) => ({ value, label }))}
+                    value={recommendation}
+                    onChange={setRecommendation}
+                  />
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, sm: 7 }}>
+                  <Textarea
+                    label="Comments, if any"
+                   
+                    minRows={3}
+                    maxLength={1200}
+                    value={comment}
+                    onChange={(event) => setComment(event.target.value)}
+                  />
+                </Grid.Col>
+              </Grid>
+            </div>
+
+            {alreadyScored ? (
+              <Alert color="teal" icon={<IconCheck size={18} />}>
+                A rating from you is already recorded. Submit again only if you intend to update it.
+              </Alert>
+            ) : null}
 
             <Group justify="space-between" align="center">
-              <div>
-                <Text size="sm" c="dimmed">
-                  Weighted score preview
-                </Text>
-                <Progress
-                  value={(averageScore / 10) * 100}
-                  color={getScoreColor(averageScore)}
-                  size="sm"
-                  style={{ width: 200 }}
-                  mt={4}
-                />
+              <div style={{ flex: 1, maxWidth: 260 }}>
+                <Progress value={weightedScore * 10} color={getScoreTone(weightedScore)} size="sm" />
               </div>
               <Button
-                leftSection={<IconStar size={16} />}
-                disabled={!allScored || isSubmitting}
+                className="dp-primary-button"
+                leftSection={<IconClipboardCheck size={17} />}
+                disabled={!canSubmit}
                 loading={isSubmitting}
-                onClick={() => onScoreSubmit(idea.id, scores)}
-                color="indigo"
+                onClick={() => onSubmit({
+                  ideaId: idea.id,
+                  scores,
+                  recommendation: recommendation ?? '',
+                  comment,
+                })}
               >
-                Submit Scores
+                {alreadyScored ? 'Update rating' : 'Submit rating'}
               </Button>
             </Group>
-          </>
-        )}
-      </Stack>
+          </Stack>
+        </Grid.Col>
+      </Grid>
     </Card>
   )
 }
 
-export function JudgingPanel(): React.ReactElement {
+export function JudgingPanel(): ReactElement {
   const { hackathonId } = useParams<{ hackathonId: string }>()
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const [scoredIdeas, setScoredIdeas] = useState<Set<string>>(new Set())
   const [submittingIdea, setSubmittingIdea] = useState<string | null>(null)
-
   const canManageJudging = user !== null && PermissionService.isManagerOrAbove(user)
 
-  const {
-    data: judges,
-    isLoading: judgeStatusLoading,
-  } = useQuery({
+  const { data: judges, isLoading: judgeStatusLoading, error: judgeStatusError } = useQuery({
     queryKey: ['hackathon-judges', hackathonId],
     queryFn: () => JudgingService.getJudges(hackathonId!),
-    enabled: !!hackathonId && !!user,
+    enabled: Boolean(hackathonId && user),
     staleTime: 60 * 1000,
   })
-
   const isAssignedJudge = (judges ?? []).some((judge) => judge.userId === user?.id)
   const canJudge = canManageJudging || isAssignedJudge
 
-  const {
-    data: criteria,
-    isLoading: criteriaLoading,
-    error: criteriaError,
-  } = useQuery({
+  const { data: criteria, isLoading: criteriaLoading, error: criteriaError } = useQuery({
     queryKey: ['voting-criteria', hackathonId],
     queryFn: () => VotingService.getCriteria(hackathonId!),
-    enabled: !!hackathonId && canJudge,
+    enabled: Boolean(hackathonId && canJudge),
     staleTime: 5 * 60 * 1000,
   })
-
-  const {
-    data: ideasPage,
-    isLoading: ideasLoading,
-    error: ideasError,
-  } = useQuery({
+  const { data: nominations, isLoading: ideasLoading, error: ideasError } = useQuery({
     queryKey: ['judging-ideas', hackathonId],
-    queryFn: () => IdeaService.getIdeas(hackathonId!, 0, 100),
-    enabled: !!hackathonId && canJudge,
+    queryFn: () => loadAllNominations(hackathonId!),
+    enabled: Boolean(hackathonId && canJudge),
     staleTime: 2 * 60 * 1000,
   })
+  const { data: myScores, isLoading: scoresLoading, error: scoresError } = useQuery({
+    queryKey: ['my-judge-scores', hackathonId],
+    queryFn: () => JudgingService.getMyScores(hackathonId!),
+    enabled: Boolean(hackathonId && isAssignedJudge),
+    staleTime: 60 * 1000,
+  })
+
+  const ownScores = (myScores ?? []).filter((score) => score.judgeId === user?.id)
+  const scoredIdeaIds = new Set(ownScores.map((score) => score.ideaId))
 
   const scoreIdeaMutation = useMutation({
-    mutationFn: async ({ ideaId, scores }: ScoredIdea) => {
-      const entries = Object.entries(scores)
-      for (const [criteriaId, score] of entries) {
-        if (isAssignedJudge) {
-          await JudgingService.submitScore(hackathonId!, { ideaId, criterionId: criteriaId, score })
-        } else {
-          await VotingService.scoreIdea(ideaId, criteriaId, score)
-        }
-      }
-      return ideaId
+    mutationFn: async (submission: ScoreSubmission) => {
+      const note = [`Recommendation: ${submission.recommendation}`, submission.comment.trim()]
+        .filter(Boolean)
+        .join('\n\n')
+      await JudgingService.submitEvaluation(hackathonId!, {
+        ideaId: submission.ideaId,
+        scores: Object.entries(submission.scores).map(([criterionId, score]) => ({ criterionId, score })),
+        comment: note,
+      })
+      return submission.ideaId
     },
-    onSuccess: (ideaId) => {
-      setScoredIdeas((prev) => new Set(prev).add(ideaId))
+    onSuccess: async () => {
       setSubmittingIdea(null)
-      queryClient.invalidateQueries({ queryKey: ['judging-ideas', hackathonId] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['my-judge-scores', hackathonId] }),
+        queryClient.invalidateQueries({ queryKey: ['judging-ideas', hackathonId] }),
+        queryClient.invalidateQueries({ queryKey: ['score-summary', hackathonId] }),
+        queryClient.invalidateQueries({ queryKey: ['all-judge-scores', hackathonId] }),
+      ])
       notifications.show({
-        title: 'Scores submitted',
-        message: 'Your scores have been recorded successfully.',
-        color: 'green',
+        title: 'Rating recorded',
+        message: 'The weighted total and committee ranking have been updated.',
+        color: 'teal',
       })
     },
     onError: (error) => {
       setSubmittingIdea(null)
       notifications.show({
-        title: 'Failed to submit scores',
-        message: error instanceof Error ? error.message : 'An error occurred',
+        title: 'Rating not recorded',
+        message: error instanceof Error ? error.message : 'Please try again.',
         color: 'red',
       })
     },
   })
 
-  const handleScoreSubmit = (ideaId: string, scores: IdeaScores): void => {
-    setSubmittingIdea(ideaId)
-    scoreIdeaMutation.mutate({ ideaId, scores })
+  if (judgeStatusLoading) {
+    return <Center py={100}><Loader size="lg" /></Center>
   }
 
-  if (judgeStatusLoading) {
-    return (
-      <Container size="md" py="xl">
-        <Center py="xl"><Loader size="lg" /></Center>
-      </Container>
-    )
-  }
+  if (judgeStatusError) return <Alert color="red">Unable to verify committee access. Please reload and try again.</Alert>
 
   if (!canJudge) {
     return (
-      <Container size="md" py="xl">
-        <Center py="xl">
+      <Container size="sm" py={80}>
+        <Center>
           <Stack align="center" gap="md">
-            <ThemeIcon size={80} variant="light" color="red">
-              <IconAlertCircle style={{ width: rem(40), height: rem(40) }} />
-            </ThemeIcon>
-            <Title order={3}>Access Denied</Title>
-            <Text ta="center" c="dimmed">
-              Only assigned judges, hackathon organizers and administrators can access the judging panel.
-            </Text>
-            <Button variant="light" onClick={() => navigate(`/hackathons/${hackathonId}`)}>
-              Back to Hackathon
-            </Button>
+            <ThemeIcon size={72} radius="xl" variant="light" color="red"><IconAlertCircle size={34} /></ThemeIcon>
+            <Title order={2}>Committee access required</Title>
+            <Text ta="center" c="dimmed">Only assigned committee members and award managers can open this evaluation form.</Text>
+            <Button variant="light" onClick={() => navigate(`/hackathons/${hackathonId}`)}>Back to award event</Button>
           </Stack>
         </Center>
       </Container>
     )
   }
 
-  const isLoading = criteriaLoading || ideasLoading
-  const hasError = criteriaError ?? ideasError
-  const ideas: Idea[] = ideasPage?.content ?? []
-  const submittedIdeas = ideas.filter(
-    (i) => i.status === 'submitted' || i.status === 'in-progress' || i.status === 'completed'
-  )
+  const isLoading = criteriaLoading || ideasLoading || scoresLoading
+  const error = criteriaError ?? ideasError ?? scoresError
+  const ideas: Idea[] = nominations ?? []
+  const submittedIdeas = ideas.filter((idea) => ['submitted', 'in-progress', 'completed'].includes(idea.status))
+  const criteriaReady = officialCriteria(criteria ?? [])
 
   return (
-    <Container size="xl" py="xl">
-      <Stack gap="lg">
-        <Group justify="space-between" align="flex-start">
+    <Container size={1380} py={{ base: 'md', md: 'xl' }} className="dp-page">
+      <Stack gap="xl">
+        <Group justify="space-between" align="flex-end">
           <div>
-            <Group gap="sm" mb="xs">
-              <ActionIcon
-                variant="subtle"
-                onClick={() => navigate(`/hackathons/${hackathonId}`)}
-              >
+            <Group gap="xs" mb="md">
+              <ActionIcon variant="subtle" aria-label="Back to award event" onClick={() => navigate(`/hackathons/${hackathonId}`)}>
                 <IconArrowLeft size={18} />
               </ActionIcon>
-              <ThemeIcon size="lg" variant="light" color="indigo">
-                <IconTrophy size={20} />
-              </ThemeIcon>
-              <Title order={2}>Judging Panel</Title>
+              <Text className="dp-section-label" style={{ marginBottom: 0 }}>2026 Digital Pioneer · Committee</Text>
             </Group>
-            <Text c="dimmed" ml={rem(76)}>
-              Score each idea against the defined criteria. Scores are final once submitted.
+            <h1 className="dp-section-title">Committee scoring</h1>
+            <Text className="dp-section-copy" mt="md">
+              Review the nomination evidence, score both criteria with whole numbers, and record a recommendation. Totals use the official 70/30 weighting.
             </Text>
           </div>
-          <Tooltip label="View leaderboard">
+          {canManageJudging ? <Tooltip label="Open committee ranking">
             <Button
               variant="light"
-              color="yellow"
-              leftSection={<IconTrophy size={16} />}
+              color="grape"
+              leftSection={<IconTrophy size={17} />}
               onClick={() => navigate(`/hackathons/${hackathonId}/leaderboard`)}
             >
-              Leaderboard
+              View ranking
             </Button>
-          </Tooltip>
+          </Tooltip> : null}
         </Group>
 
-        {isLoading && (
-          <Center py="xl">
-            <Stack align="center" gap="md">
-              <Loader size="lg" />
-              <Text c="dimmed">Loading ideas and criteria…</Text>
-            </Stack>
-          </Center>
-        )}
-
-        {hasError && (
-          <Alert icon={<IconAlertCircle size={16} />} color="red">
-            {hasError instanceof Error ? hasError.message : 'Failed to load data.'}
-          </Alert>
-        )}
-
-        {!isLoading && !hasError && criteria && criteria.length === 0 && (
-          <Alert icon={<IconAlertCircle size={16} />} color="yellow">
-            No voting criteria defined for this hackathon. Set up criteria in the hackathon
-            settings before scoring ideas.
-          </Alert>
-        )}
-
-        {!isLoading && !hasError && submittedIdeas.length === 0 && (ideas.length > 0 || ideasPage) && (
-          <Center py="xl">
-            <Stack align="center" gap="sm">
-              <ThemeIcon size={64} variant="light" color="blue" radius="xl">
-                <IconBulb size={32} />
-              </ThemeIcon>
-              <Text fw={500}>No ideas to judge</Text>
-              <Text size="sm" c="dimmed">
-                There are no submitted ideas in this hackathon yet.
-              </Text>
-            </Stack>
-          </Center>
-        )}
-
-        {!isLoading && !hasError && criteria && criteria.length > 0 && (
-          <Stack gap="md">
-            <Group gap="sm">
-              <Badge size="lg" variant="light" color="indigo">
-                {submittedIdeas.length} ideas to judge
-              </Badge>
-              <Badge size="lg" variant="light" color="green">
-                {scoredIdeas.size} scored
-              </Badge>
-              {criteria.length > 0 && (
-                <Badge size="lg" variant="light" color="gray">
-                  {criteria.length} criteria
-                </Badge>
-              )}
-            </Group>
-
-            {submittedIdeas.map((idea) => (
-              <IdeaJudgingCard
-                key={idea.id}
-                idea={idea}
-                criteria={criteria}
-                onScoreSubmit={handleScoreSubmit}
-                isSubmitting={submittingIdea === idea.id}
-                alreadyScored={scoredIdeas.has(idea.id)}
-              />
+        {!isAssignedJudge ? <Alert color="blue">You have manager access to review nominations. Assign yourself as a committee member in award settings to submit ratings.</Alert> : null}
+        <Card className="dp-rules-panel" p="lg">
+          <Grid align="center">
+            <Grid.Col span={{ base: 12, sm: 4 }}>
+              <Group gap="sm"><IconScale size={20} /><Text fw={800}>Official weighting</Text></Group>
+            </Grid.Col>
+            {DIGITAL_PIONEER_RUBRIC.map((rubric) => (
+              <Grid.Col span={{ base: 6, sm: 3 }} key={rubric.key}>
+                <Text className="dp-track-code">{rubric.nameZh}</Text>
+                <Text fw={800}>{rubric.name} · {rubric.weight}%</Text>
+              </Grid.Col>
             ))}
-          </Stack>
-        )}
+            <Grid.Col span={{ base: 12, sm: 2 }}>
+              <Badge color={criteriaReady ? 'teal' : 'orange'} variant="light">
+                {criteriaReady ? 'Ready' : 'Check setup'}
+              </Badge>
+            </Grid.Col>
+          </Grid>
+        </Card>
+
+        {isLoading ? (
+          <Center py={80}><Stack align="center"><Loader /><Text c="dimmed">Loading nominations…</Text></Stack></Center>
+        ) : null}
+        {error ? <Alert color="red" icon={<IconAlertCircle size={18} />}>{error instanceof Error ? error.message : 'Unable to load evaluation data.'}</Alert> : null}
+        {!isLoading && !error && !criteriaReady ? (
+          <Alert color="orange" icon={<IconAlertCircle size={18} />}>
+            Configure exactly two criteria totaling 100% before committee scoring: Behavior Demonstration 70% and Business Impact 30%.
+          </Alert>
+        ) : null}
+        {!isLoading && !error && criteriaReady && submittedIdeas.length === 0 ? (
+          <Center py={80}><Stack align="center"><Text fw={700}>No nominations are ready for review.</Text><Text c="dimmed">Submitted cases will appear here automatically.</Text></Stack></Center>
+        ) : null}
+        {!isLoading && !error && criteriaReady ? submittedIdeas.map((idea) => (
+          <IdeaJudgingCard
+            key={`${idea.id}-${ownScores.filter((score) => score.ideaId === idea.id).map((score) => `${score.id}:${score.score}:${score.comment}`).join()} `}
+            savedScores={ownScores.filter((score) => score.ideaId === idea.id)}
+            canSubmitRating={isAssignedJudge}
+            idea={idea}
+            criteria={criteria ?? []}
+            alreadyScored={scoredIdeaIds.has(idea.id)}
+            isSubmitting={submittingIdea === idea.id}
+            onSubmit={(submission) => {
+              setSubmittingIdea(idea.id)
+              scoreIdeaMutation.mutate(submission)
+            }}
+          />
+        )) : null}
       </Stack>
     </Container>
   )

@@ -10,6 +10,7 @@ import wtf.hackhub.infrastructure.persistence.idea.IdeaScoreRepository;
 import wtf.hackhub.infrastructure.persistence.idea.VotingCriteriaRepository;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -30,6 +31,12 @@ public class ScoreIdeaUseCase {
 	public IdeaScore execute(UUID ideaId, UUID userId, UUID criteriaId, int score) {
 		Idea idea = ideaRepository.findById(ideaId)
 				.orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(ideaId));
+
+		var rubric = criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(idea.getHackathonId());
+		if (rubric.stream().anyMatch(c -> c.getWeight() == 70 && c.getName().toLowerCase(Locale.ROOT).contains("behavior"))
+				&& rubric.stream().anyMatch(c -> c.getWeight() == 30 && c.getName().toLowerCase(Locale.ROOT).contains("impact"))) {
+			throw new IllegalArgumentException("Use the assigned committee evaluation form to score Digital Pioneer cases");
+		}
 
 		VotingCriteria criteria = criteriaRepository.findById(criteriaId)
 				.orElseThrow(() -> new CriteriaNotFoundException(criteriaId));

@@ -2,6 +2,7 @@ package wtf.hackhub.application.hackathon;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.test.context.support.WithMockUser;
 import wtf.hackhub.domain.Hackathon;
 import wtf.hackhub.support.PostgresIntegrationTest;
 
@@ -12,6 +13,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@WithMockUser(roles = "ADMIN")
 class HackathonLifecycleIT extends PostgresIntegrationTest {
 
 	@Autowired

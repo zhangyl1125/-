@@ -1,4 +1,4 @@
-import blackBanner from '../../assets/black_banner.svg'
+import { AwardBrand } from '../components/Layout/AwardBrand'
 import {
   Paper,
   TextInput,
@@ -10,7 +10,6 @@ import {
   Container,
   Center,
   Stack,
-  Image,
   ActionIcon,
   UnstyledButton,
   useMantineColorScheme,
@@ -18,7 +17,7 @@ import {
 } from '@mantine/core'
 import { IconSun, IconMoon } from '@tabler/icons-react'
 import { useForm } from '@mantine/form'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { notifications } from '@mantine/notifications'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -30,6 +29,7 @@ interface LoginFormData {
 
 export function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { login } = useAuthStore()
   const { colorScheme, toggleColorScheme } = useMantineColorScheme()
   const { language, toggleLanguage } = useLanguage()
@@ -50,10 +50,14 @@ export function Login() {
       await login(values.email, values.password)
       notifications.show({
         title: 'Welcome back!',
-        message: 'Successfully logged in to HackHub',
+        message: 'Successfully logged in to Digital Award',
         color: 'green',
       })
-      navigate('/')
+      const requestedPath = searchParams.get('redirect')
+      const destination = requestedPath?.startsWith('/') && !requestedPath.startsWith('//')
+        ? requestedPath
+        : '/'
+      navigate(destination)
     } catch (error) {
       notifications.show({
         title: 'Login failed',
@@ -88,14 +92,9 @@ export function Login() {
       </ActionIcon>
 
       <Center mb={30}>
-        <Image
-          src={blackBanner}
-          alt="HackHub"
-          h={80}
-          w="auto"
-          fit="contain"
-          style={{ filter: colorScheme === 'dark' ? 'invert(1)' : 'none' }}
-        />
+        <Stack align="center" gap="xs">
+          <AwardBrand />
+        </Stack>
       </Center>
 
       <Paper withBorder shadow="md" p={30} mt={30} radius="md">
@@ -104,7 +103,7 @@ export function Login() {
         </Title>
         
         <Text c="dimmed" size="sm" ta="center" mt={5} mb="xl">
-          Sign in to your hackathon account
+          Sign in to the Digital Pioneer Award portal
         </Text>
 
         <form onSubmit={form.onSubmit(handleSubmit)}>

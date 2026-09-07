@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { Login } from './Login'
 
 // Mock SVG imports
-vi.mock('../../assets/black_banner.svg', () => ({ default: 'black_banner.svg' }))
+vi.mock('../../assets/green_logo.svg', () => ({ default: 'green_logo.svg' }))
 
 // Mock react-router-dom navigate
 const mockNavigate = vi.fn()
@@ -37,9 +37,9 @@ vi.mock('@mantine/notifications', async () => {
   }
 })
 
-function renderLogin() {
+function renderLogin(initialEntry = '/login') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <MantineProvider>
         <Notifications />
         <Login />
@@ -104,6 +104,23 @@ describe('Login', () => {
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/')
+    })
+  })
+
+  it('returns to a safe requested app page after successful login', async () => {
+    mockLogin.mockResolvedValueOnce(undefined)
+    renderLogin('/login?redirect=/nominate')
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: 'aah5sgh@bosch.com' },
+    })
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'aah5sgh@bosch.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/nominate')
     })
   })
 
