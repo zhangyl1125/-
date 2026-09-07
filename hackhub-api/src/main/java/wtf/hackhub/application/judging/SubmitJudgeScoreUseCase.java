@@ -41,10 +41,13 @@ public class SubmitJudgeScoreUseCase {
 
 		mutationLock.acquire(ideaId);
 		var idea = ideaRepository.findById(ideaId).orElseThrow(() -> new IllegalArgumentException("Case not found"));
-		if (!hackathonId.equals(idea.getHackathonId())) throw new IllegalArgumentException("Case belongs to another award");
+		if (!hackathonId.equals(idea.getHackathonId()))
+			throw new IllegalArgumentException("Case belongs to another award");
 		if (criterionId != null) {
-			var criterion = criteriaRepository.findById(criterionId).orElseThrow(() -> new IllegalArgumentException("Criterion not found"));
-			if (!hackathonId.equals(criterion.getHackathonId())) throw new IllegalArgumentException("Criterion belongs to another award");
+			var criterion = criteriaRepository.findById(criterionId)
+					.orElseThrow(() -> new IllegalArgumentException("Criterion not found"));
+			if (!hackathonId.equals(criterion.getHackathonId()))
+				throw new IllegalArgumentException("Criterion belongs to another award");
 		} else if (!criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(hackathonId).isEmpty()) {
 			throw new IllegalArgumentException("A scoring criterion is required");
 		}
@@ -56,24 +59,41 @@ public class SubmitJudgeScoreUseCase {
 				() -> scoreRepository.save(new JudgeScore(hackathonId, ideaId, judgeId, criterionId, score, comment)));
 	}
 
-	public record CriterionScore(UUID criterionId, int score) {}
+	public record CriterionScore(UUID criterionId, int score) {
+	}
 
 	@Transactional
-	public List<JudgeScore> submitEvaluation(UUID hackathonId, UUID ideaId, UUID judgeId,
-			List<CriterionScore> scores, String comment) {
+	public List<JudgeScore> submitEvaluation(UUID hackathonId, UUID ideaId, UUID judgeId, List<CriterionScore> scores,
+			String comment) {
 		if (!judgeRepository.existsByHackathonIdAndUserId(hackathonId, judgeId)) {
 			throw new NotAJudgeException(judgeId, hackathonId);
 		}
 		var criteria = criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(hackathonId);
 		var expected = criteria.stream().map(c -> c.getId()).collect(Collectors.toSet());
 		var supplied = new HashSet<UUID>();
-		if (scores == null || scores.isEmpty()) throw new IllegalArgumentException("All criteria must be scored");
+		if (scores == null || scores.isEmpty())
+			throw new IllegalArgumentException("All criteria must be scored");
 		for (var score : scores) {
-			if (score.criterionId() == null || !supplied.add(score.criterionId()) || score.score() < 1 || score.score() > 10)
+			if (score.criterionId() == null || !supplied.add(score.criterionId()) || score.score() < 1
+					|| score.score() > 10)
 				throw new IllegalArgumentException("Provide each criterion once with an integer score from 1 to 10");
 		}
-		if (!expected.equals(supplied)) throw new IllegalArgumentException("All award criteria must be scored together");
-		return scores.stream().map(s -> execute(hackathonId, ideaId, judgeId, s.criterionId(), s.score(), comment)).toList();
+		if (!expected.equals(supplied))
+			throw new IllegalArgumentException("All award criteria must be scored together");
+		return scores.stream().map(s -> execute(hackathonId, ideaId, judgeId, s.criterionId(), s.score(), comment))
+				.toList();
+	}
+
+	@Transactional
+	public void deleteEvaluation(UUID hackathonId, UUID ideaId, UUID judgeId) {
+		if (!judgeRepository.existsByHackathonIdAndUserId(hackathonId, judgeId))
+			throw new NotAJudgeException(judgeId, hackathonId);
+		mutationLock.acquire(ideaId);
+		var idea = ideaRepository.findById(ideaId).orElseThrow(() -> new IllegalArgumentException("Case not found"));
+		if (!hackathonId.equals(idea.getHackathonId()))
+			throw new IllegalArgumentException("Case belongs to another award");
+		scoreRepository.deleteAll(scoreRepository.findAllByIdeaId(ideaId).stream()
+				.filter(score -> score.getJudgeId().equals(judgeId)).toList());
 	}
 
 	public static class NotAJudgeException extends RuntimeException {

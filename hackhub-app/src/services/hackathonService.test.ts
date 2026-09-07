@@ -51,6 +51,18 @@ describe('HackathonService', () => {
     vi.clearAllMocks()
   })
 
+  it('replaces retired demo copy consistently without changing IDs or custom campaign content', async () => {
+    const legacy = { ...BASE_HACKATHON, title: 'Spring 2026 Hackathon', description: 'Build something amazing in 48 hours. Open to all skill levels.' }
+    mockApi.get.mockResolvedValueOnce({ content: [legacy, BASE_HACKATHON], totalPages: 1 })
+    const page = await HackathonService.getHackathons()
+    expect(page.content[0]).toMatchObject({ id: legacy.id, title: '2026 Digital Pioneer Award' })
+    expect(page.content[0].description).toContain('Customer Values')
+    expect(page.content[1]).toEqual(BASE_HACKATHON)
+    mockApi.get.mockResolvedValueOnce({ ...legacy, description: 'Custom award details' })
+    expect(await HackathonService.getHackathon(legacy.id)).toMatchObject({ title: '2026 Digital Pioneer Award', description: 'Custom award details' })
+    expect(legacy.title).toBe('Spring 2026 Hackathon')
+  })
+
   describe('getHackathons', () => {
     it('calls correct endpoint with defaults', async () => {
       mockApi.get.mockResolvedValueOnce({ content: [BASE_HACKATHON], totalElements: 1, totalPages: 1, number: 0, size: 20 })

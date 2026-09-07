@@ -10,11 +10,14 @@ import { getAllPages } from '../services/pagination'
 import { api } from '../lib/apiClient'
 import { DIGITAL_PIONEER_RUBRIC } from '../config/digitalPioneer'
 import { VotingCriteriaManager } from '../components/VotingCriteriaManager'
+import { useLanguage } from '../contexts/LanguageContext'
+import { translateUiText } from '../contexts/uiTranslations'
 import './DigitalPioneer.css'
 
 export function AwardManagement() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuthStore()
+  const { language } = useLanguage()
   const [campaigns, setCampaigns] = useState<Hackathon[]>([])
   const [judges, setJudges] = useState<HackathonJudge[]>([])
   const [members, setMembers] = useState<Array<{ value: string; label: string }>>([])
@@ -81,24 +84,24 @@ export function AwardManagement() {
   }
 
   return (
-    <Container size={1240} py="xl" className="dp-page">
+    <Container size={1240} py="xl" className="dp-page dp-management-page">
       <Stack gap="xl">
         <Group justify="space-between">
           <div>
             <Title order={1}>{canManage ? 'Award management' : 'Committee scoring'}</Title>
+            <Text c="dimmed" mt="sm">{canManage ? 'Manage committee members, review case ratings, and track the final ranking.' : 'Open an assigned award to review nominations and submit your ratings.'}</Text>
           </div>
           {canManage && <Button component={Link} to="/hackathons/create" className="dp-primary-button">Create award campaign</Button>}
         </Group>
         {error && <Alert color="red" role="alert">{error}</Alert>}
         {loading ? <Text role="status">Loading award campaigns…</Text> : !id ? (
           campaigns.length ? campaigns.map((item) => (
-            <Card key={item.id} className="dp-form-shell" p="lg">
+            <Card key={item.id} className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Group justify="space-between">
-                <div><Title order={3}>{item.title}</Title><Text c="dimmed" mt="xs">{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</Text></div>
-                <Badge>{item.status}</Badge>
+                <div><Title order={3}>{canManage ? <Link className="dp-award-title-link" to={`/awards/${item.id}`}>{item.title}</Link> : item.title}</Title><Text c="dimmed" mt="xs">{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</Text></div>
+                <Badge>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Badge>
               </Group>
               <Group mt="lg">
-                {canManage && <Button component={Link} to={`/awards/${item.id}`} variant="default">Campaign settings</Button>}
                 <Button component={Link} to={`/hackathons/${item.id}/judge`}>Committee scoring</Button>
                 {canManage && <Button component={Link} to={`/hackathons/${item.id}/leaderboard`} variant="light">Scores & rankings</Button>}
               </Group>
@@ -106,22 +109,22 @@ export function AwardManagement() {
           )) : <Text>No award campaigns are available{canManage ? '.' : ' for your committee account.'}</Text>
         ) : !campaign ? <Alert color="orange">This award campaign is unavailable.</Alert> : (
           <>
-            <Card className="dp-form-shell" p="lg">
-              <Group justify="space-between"><Title order={2}>{campaign.title}</Title><Badge>{campaign.status}</Badge></Group>
+            <Card className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
+              <Group justify="space-between"><Title order={2}>{campaign.title}</Title><Badge>{campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}</Badge></Group>
               <Text mt="md">{campaign.description}</Text>
               <Group mt="lg">
                 <Button component={Link} to={`/hackathons/${id}/judge`}>Committee scoring</Button>
                 {canManage && <Button component={Link} to={`/hackathons/${id}/leaderboard`} variant="light">Scores & rankings</Button>}
                 {canManage && <Button component={Link} to={`/hackathons/${id}/edit`} variant="default">Edit campaign & dates</Button>}
               </Group>
-              {canManage && <Select mt="lg" maw={360} label="Campaign status" description="Running campaigns accept associate votes; completed campaigns close voting." value={campaign.status} disabled={busy}
-                data={[{ value: 'draft', label: 'Draft' }, { value: 'open', label: 'Open' }, { value: 'running', label: 'Running' }, { value: 'completed', label: 'Completed' }]}
+              {canManage && <Select mt="lg" maw={520} size="md" label="Campaign status" description="Running campaigns accept associate votes; completed campaigns close voting." value={campaign.status} disabled={busy}
+                data={[{ value: 'draft', label: 'Draft' }, { value: 'open', label: 'Open' }, { value: 'running', label: 'Running' }, { value: 'completed', label: 'Completed' }].map((option) => ({ ...option, label: language === 'zh' ? translateUiText(option.label) : option.label }))}
                 onChange={(value) => { if (value) void mutate(async () => {
                   const updated = await HackathonService.transitionStatus(campaign.id, value as Hackathon['status'])
                   setCampaigns((current) => current.map((item) => item.id === updated.id ? updated : item))
                 }) }} />}
             </Card>
-            {canManage && <Card className="dp-form-shell" p="lg">
+            {canManage && <Card className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Title order={3}>Committee members</Title>
               <Stack mt="md">
                 {judges.map((judge) => <Group key={judge.id} justify="space-between">
@@ -129,15 +132,15 @@ export function AwardManagement() {
                   <Button size="sm" variant="subtle" color="red" disabled={busy} onClick={() => void mutate(async () => { await JudgingService.removeJudge(campaign.id, judge.userId); setJudges((current) => current.filter((item) => item.userId !== judge.userId)) })}>Remove</Button>
                 </Group>)}
                 {!judges.length && <Text c="dimmed">No committee members assigned yet.</Text>}
-                <Select label="Assign an associate" searchable value={invitee} onChange={setInvitee} data={members.filter((member) => !judges.some((judge) => judge.userId === member.value))} />
+                <Select size="md" label="Assign an associate" searchable value={invitee} onChange={setInvitee} data={members.filter((member) => !judges.some((judge) => judge.userId === member.value))} />
                 <Button w="fit-content" loading={busy} disabled={!invitee} onClick={() => void mutate(async () => { if (!invitee) return; const added = await JudgingService.inviteJudge(campaign.id, invitee); setJudges((current) => [...current, added]); setInvitee(null) })}>Assign committee member</Button>
               </Stack>
             </Card>}
             {canManage && <VotingCriteriaManager hackathonId={campaign.id} isManager />}
-            <Card className="dp-form-shell" p="lg">
+            <Card className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Title order={3}>Evaluation standard</Title>
               {DIGITAL_PIONEER_RUBRIC.map((criterion) => <Text key={criterion.key} mt="md"><strong>{criterion.name} · {criterion.weight}%</strong><br />{criterion.description}</Text>)}
-              {canManage && <Text mt="lg" c="dimmed">Associate voting: 4 votes per category, at most 2 within the voter's own department. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
+              {canManage && <Text mt="lg" c="dimmed">Associate voting: up to 4 votes per category. At least 50% must be outside the voter's department after every vote or withdrawal. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
             </Card>
           </>
         )}

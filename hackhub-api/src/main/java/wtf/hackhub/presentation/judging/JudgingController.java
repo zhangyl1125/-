@@ -99,8 +99,10 @@ public class JudgingController {
 	@Operation(summary = "Get scores for a hackathon — judges see their own, managers see all")
 	@ApiResponse(responseCode = "200", description = "Success")
 	@GetMapping("/scores")
-	public List<ScoreResponse> getScores(@PathVariable UUID hackathonId, @AuthenticationPrincipal UUID userId, Authentication authentication) {
-		boolean isManager = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")) || isManagerOrOwner(hackathonId, userId);
+	public List<ScoreResponse> getScores(@PathVariable UUID hackathonId, @AuthenticationPrincipal UUID userId,
+			Authentication authentication) {
+		boolean isManager = authentication.getAuthorities().stream()
+				.anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")) || isManagerOrOwner(hackathonId, userId);
 		return getScoresUseCase.getScoresForHackathon(hackathonId, userId, isManager).stream().map(ScoreResponse::from)
 				.toList();
 	}
@@ -110,30 +112,45 @@ public class JudgingController {
 	@GetMapping("/scores/summary")
 	@PreAuthorize("hasRole('ADMIN') or @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication)")
 	public List<ScoreSummaryResponse> getSummary(@PathVariable UUID hackathonId) {
-		return getScoresUseCase.getSummary(hackathonId).stream().map(s -> new ScoreSummaryResponse(s.ideaId(),
-				s.ideaTitle(), s.panelScore(), s.communityScore(), s.blendedScore(), s.rank(), s.judgeCount(), s.voteCount())).toList();
+		return getScoresUseCase
+				.getSummary(hackathonId).stream().map(s -> new ScoreSummaryResponse(s.ideaId(), s.ideaTitle(),
+						s.panelScore(), s.communityScore(), s.blendedScore(), s.rank(), s.judgeCount(), s.voteCount()))
+				.toList();
 	}
 
 	@PostMapping("/evaluations")
 	public List<ScoreResponse> submitEvaluation(@PathVariable UUID hackathonId,
 			@Valid @RequestBody EvaluationRequest req, @AuthenticationPrincipal UUID userId) {
-		return submitScoreUseCase.submitEvaluation(hackathonId, req.ideaId(), userId,
-				req.scores().stream().map(s -> new SubmitJudgeScoreUseCase.CriterionScore(s.criterionId(), s.score())).toList(),
+		return submitScoreUseCase.submitEvaluation(
+				hackathonId, req.ideaId(), userId, req.scores().stream()
+						.map(s -> new SubmitJudgeScoreUseCase.CriterionScore(s.criterionId(), s.score())).toList(),
 				req.comment()).stream().map(ScoreResponse::from).toList();
+	}
+
+	@DeleteMapping("/evaluations/{ideaId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteEvaluation(@PathVariable UUID hackathonId, @PathVariable UUID ideaId,
+			@AuthenticationPrincipal UUID userId) {
+		submitScoreUseCase.deleteEvaluation(hackathonId, ideaId, userId);
 	}
 
 	@GetMapping("/scores/all")
 	@PreAuthorize("hasRole('ADMIN') or @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication)")
 	public List<ScoreResponse> getAllScores(@PathVariable UUID hackathonId, @AuthenticationPrincipal UUID userId) {
-		return getScoresUseCase.getScoresForHackathon(hackathonId, userId, true).stream().map(ScoreResponse::from).toList();
+		return getScoresUseCase.getScoresForHackathon(hackathonId, userId, true).stream().map(ScoreResponse::from)
+				.toList();
 	}
 
-	public record EvaluationCriterion(@NotNull UUID criterionId, @NotNull @Min(1) @Max(10) Integer score) {}
-	public record EvaluationRequest(@NotNull UUID ideaId, @NotEmpty List<@NotNull @Valid EvaluationCriterion> scores, String comment) {}
+	public record EvaluationCriterion(@NotNull UUID criterionId, @NotNull @Min(1) @Max(10) Integer score) {
+	}
+	public record EvaluationRequest(@NotNull UUID ideaId, @NotEmpty List<@NotNull @Valid EvaluationCriterion> scores,
+			String comment) {
+	}
 
 	private boolean isManagerOrOwner(UUID hackathonId, UUID userId) {
 		return hackathonRepository.findById(hackathonId).map(h -> {
-			if (userId.equals(h.getCreatedBy())) return true;
+			if (userId.equals(h.getCreatedBy()))
+				return true;
 			if (h.getOrganizationId() == null)
 				return false;
 			return memberRepository.findByOrganizationIdAndUserId(h.getOrganizationId(), userId)

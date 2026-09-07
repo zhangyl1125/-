@@ -46,6 +46,13 @@ class SubmitIdeaUseCaseTest {
 	wtf.hackhub.infrastructure.persistence.auth.ProfileRepository profileRepository;
 	@Mock
 	wtf.hackhub.infrastructure.persistence.judging.JudgeScoreRepository judgeScoreRepository;
+	@Mock
+	NomineeDirectory nomineeDirectory;
+	@org.junit.jupiter.api.BeforeEach
+	void metadata() {
+		org.mockito.Mockito.lenient().when(nomineeDirectory.enrich(org.mockito.ArgumentMatchers.nullable(String.class),
+				org.mockito.ArgumentMatchers.anyBoolean())).thenAnswer(call -> call.getArgument(0));
+	}
 	@InjectMocks
 	SubmitIdeaUseCase useCase;
 
@@ -154,10 +161,11 @@ class SubmitIdeaUseCaseTest {
 		UUID ideaId = UUID.randomUUID(), nomineeId = UUID.randomUUID();
 		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(idea(USER_ID)));
 		when(profileRepository.existsById(nomineeId)).thenReturn(true);
-		when(profileRepository.findById(USER_ID)).thenReturn(Optional.of(new wtf.hackhub.domain.Profile("p@bosch.com", "Participant", "hash")));
+		when(profileRepository.findById(USER_ID))
+				.thenReturn(Optional.of(new wtf.hackhub.domain.Profile("p@bosch.com", "Participant", "hash")));
 		String metadata = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nomineeId + "\"}]";
-		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "Customer Values", List.of(), null, null, null, metadata))
-				.isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
+		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "Customer Values", List.of(), null,
+				null, null, metadata)).isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
 		org.mockito.Mockito.verify(ideaRepository, org.mockito.Mockito.never()).save(any());
 	}
 
@@ -191,8 +199,9 @@ class SubmitIdeaUseCaseTest {
 		Idea existing = idea(USER_ID);
 		org.springframework.test.util.ReflectionTestUtils.setField(existing, "votes", 1);
 		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(existing));
-		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "Customer Values", List.of(), null, null, null, null))
-				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Track and nominee cannot change");
+		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "Customer Values", List.of(), null,
+				null, null, null)).isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("Track and nominee cannot change");
 		org.mockito.Mockito.verify(ideaRepository, org.mockito.Mockito.never()).save(any());
 		var ordered = org.mockito.Mockito.inOrder(mutationLock, ideaRepository);
 		ordered.verify(mutationLock).acquire(ideaId);
@@ -206,9 +215,10 @@ class SubmitIdeaUseCaseTest {
 		existing.update("Title", "Desc", "AI", List.of(), Idea.Status.SUBMITTED, null, null,
 				"[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nominee + "\"}]");
 		when(ideaRepository.findById(ideaId)).thenReturn(Optional.of(existing));
-		when(judgeScoreRepository.findAllByIdeaId(ideaId)).thenReturn(List.of(new wtf.hackhub.domain.JudgeScore(
-				HACKATHON_ID, ideaId, UUID.randomUUID(), null, 8, "Evidence")));
-		assertThatThrownBy(() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "AI", List.of(), null, null, null, null))
+		when(judgeScoreRepository.findAllByIdeaId(ideaId)).thenReturn(List
+				.of(new wtf.hackhub.domain.JudgeScore(HACKATHON_ID, ideaId, UUID.randomUUID(), null, 8, "Evidence")));
+		assertThatThrownBy(
+				() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "AI", List.of(), null, null, null, null))
 				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Track and nominee cannot change");
 	}
 

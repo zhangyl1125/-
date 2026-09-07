@@ -22,6 +22,7 @@ import java.util.UUID;
 @Service
 public class SubmitIdeaUseCase {
 	private final IdeaMutationLock mutationLock;
+	private final NomineeDirectory nomineeDirectory;
 
 	private final IdeaRepository ideaRepository;
 	private final JudgeScoreRepository judgeScoreRepository;
@@ -33,8 +34,10 @@ public class SubmitIdeaUseCase {
 
 	public SubmitIdeaUseCase(IdeaRepository ideaRepository, HackathonRepository hackathonRepository,
 			TeamRepository teamRepository, TeamMemberRepository teamMemberRepository,
-			OrganizationMemberRepository orgMemberRepository, ProfileRepository profileRepository, IdeaMutationLock mutationLock,
-			JudgeScoreRepository judgeScoreRepository) {
+			OrganizationMemberRepository orgMemberRepository, ProfileRepository profileRepository,
+			IdeaMutationLock mutationLock, JudgeScoreRepository judgeScoreRepository,
+			NomineeDirectory nomineeDirectory) {
+		this.nomineeDirectory = nomineeDirectory;
 		this.ideaRepository = ideaRepository;
 		this.mutationLock = mutationLock;
 		this.judgeScoreRepository = judgeScoreRepository;
@@ -48,8 +51,8 @@ public class SubmitIdeaUseCase {
 	@Transactional
 	public Idea execute(String title, String description, UUID hackathonId, UUID teamId, UUID createdBy,
 			String category, List<String> tags) {
-		return executeNomination(title, description, hackathonId, teamId, createdBy, category, tags,
-				Idea.Status.DRAFT, null, null, null);
+		return executeNomination(title, description, hackathonId, teamId, createdBy, category, tags, Idea.Status.DRAFT,
+				null, null, null);
 	}
 
 	@Transactional
@@ -79,6 +82,7 @@ public class SubmitIdeaUseCase {
 		}
 
 		validateNominee(projectAttachments, createdBy);
+		projectAttachments = nomineeDirectory.enrich(projectAttachments, true);
 		Idea idea = new Idea(title, description, hackathonId, teamId, createdBy, category);
 		idea.update(title, description, category, tags == null ? List.of() : tags,
 				status == null ? Idea.Status.DRAFT : status, repositoryUrl, demoUrl, projectAttachments);
@@ -95,12 +99,16 @@ public class SubmitIdeaUseCase {
 			throw new IdeaAccessDeniedException(ideaId, requestingUserId);
 		}
 		validateNominee(projectAttachments, requestingUserId);
+		projectAttachments = nomineeDirectory.enrich(projectAttachments, true);
 		if (idea.getVotes() > 0 || !judgeScoreRepository.findAllByIdeaId(ideaId).isEmpty()) {
-			Idea proposed = new Idea(title, description, idea.getHackathonId(), idea.getTeamId(), idea.getCreatedBy(), category);
-			proposed.update(title, description, category, tags, idea.getStatus(), repositoryUrl, demoUrl, projectAttachments);
+			Idea proposed = new Idea(title, description, idea.getHackathonId(), idea.getTeamId(), idea.getCreatedBy(),
+					category);
+			proposed.update(title, description, category, tags, idea.getStatus(), repositoryUrl, demoUrl,
+					projectAttachments);
 			if (!idea.getCategory().equalsIgnoreCase(category)
 					|| !VoteIdeaUseCase.nomineeId(idea).equals(VoteIdeaUseCase.nomineeId(proposed))) {
-				throw new IllegalArgumentException("Track and nominee cannot change after voting or committee scoring has started");
+				throw new IllegalArgumentException(
+						"Track and nominee cannot change after voting or committee scoring has started");
 			}
 		}
 		Idea.Status resolvedStatus = status != null ? status : idea.getStatus();
@@ -109,18 +117,24 @@ public class SubmitIdeaUseCase {
 	}
 
 	private void validateNominee(String attachments, UUID requesterId) {
-		if (attachments == null || attachments.isBlank()) return;
+		if (attachments == null || attachments.isBlank())
+			return;
 		try {
 			var items = new ObjectMapper().readTree(attachments);
-			if (items == null || !items.isArray()) throw new IllegalArgumentException("Nomination attachments must be an array");
+			if (items == null || !items.isArray())
+				throw new IllegalArgumentException("Nomination attachments must be an array");
 			int nominations = 0;
 			for (var item : items) {
-				if (!"nomination".equals(item.path("type").asText())) continue;
-				if (++nominations > 1) throw new IllegalArgumentException("Only one nominee is allowed");
+				if (!"nomination".equals(item.path("type").asText()))
+					continue;
+				if (++nominations > 1)
+					throw new IllegalArgumentException("Only one nominee is allowed");
 				UUID nomineeId = UUID.fromString(item.path("nomineeUserId").asText());
-				if (!profileRepository.existsById(nomineeId)) throw new IllegalArgumentException("Nominee profile not found");
+				if (!profileRepository.existsById(nomineeId))
+					throw new IllegalArgumentException("Nominee profile not found");
 				if (!nomineeId.equals(requesterId)) {
-					var requester = profileRepository.findById(requesterId).orElseThrow(() -> new IdeaAccessDeniedException(null, requesterId));
+					var requester = profileRepository.findById(requesterId)
+							.orElseThrow(() -> new IdeaAccessDeniedException(null, requesterId));
 					if (requester.getRole() != Profile.Role.ADMIN && requester.getRole() != Profile.Role.MANAGER)
 						throw new IdeaAccessDeniedException(null, requesterId);
 				}
@@ -137,6 +151,9 @@ public class SubmitIdeaUseCase {
 				.orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(ideaId));
 		if (!idea.getCreatedBy().equals(requestingUserId)) {
 			throw new IdeaAccessDeniedException(ideaId, requestingUserId);
+		}
+		if (idea.getVotes() > 0 || !judgeScoreRepository.findAllByIdeaId(ideaId).isEmpty()) {
+			throw new IllegalArgumentException("A nomination with votes or committee ratings cannot be deleted.");
 		}
 		ideaRepository.delete(idea);
 	}

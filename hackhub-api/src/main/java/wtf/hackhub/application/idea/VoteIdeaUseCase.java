@@ -11,16 +11,10 @@ import wtf.hackhub.infrastructure.persistence.IdeaMutationLock;
 import wtf.hackhub.infrastructure.persistence.auth.ProfileRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaRepository;
 import wtf.hackhub.infrastructure.persistence.idea.IdeaVoteRepository;
-import wtf.hackhub.infrastructure.persistence.idea.VotingParticipantRepository;
 
-import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Toggle vote on an idea (vote/unvote). Replaces the broken ideaService.ts
@@ -30,22 +24,22 @@ import java.util.stream.Collectors;
 @Service
 public class VoteIdeaUseCase {
 	private final IdeaMutationLock mutationLock;
-	private static final int MAX_VOTES_PER_TRACK = 4;
-	private static final int MAX_OWN_DEPARTMENT_VOTES_PER_TRACK = 2;
-	private static final Pattern NAME_TOKEN = Pattern.compile("[a-z0-9]+");
+	@org.springframework.beans.factory.annotation.Value("${app.voting.max-votes-per-track:4}")
+	private int maxVotesPerTrack = 4;
+
+	private final NomineeDirectory directory;
 
 	private final IdeaRepository ideaRepository;
 	private final IdeaVoteRepository voteRepository;
 	private final ProfileRepository profileRepository;
-	private final VotingParticipantRepository participantRepository;
 
 	public VoteIdeaUseCase(IdeaRepository ideaRepository, IdeaVoteRepository voteRepository,
-			ProfileRepository profileRepository, VotingParticipantRepository participantRepository, IdeaMutationLock mutationLock) {
+			ProfileRepository profileRepository, NomineeDirectory directory, IdeaMutationLock mutationLock) {
 		this.ideaRepository = ideaRepository;
 		this.mutationLock = mutationLock;
 		this.voteRepository = voteRepository;
 		this.profileRepository = profileRepository;
-		this.participantRepository = participantRepository;
+		this.directory = directory;
 	}
 
 	public record Result(boolean voted, long voteCount) {
@@ -60,34 +54,34 @@ public class VoteIdeaUseCase {
 
 		Optional<IdeaVote> existing = voteRepository.findByIdeaIdAndUserId(ideaId, userId);
 
-		if (existing.isPresent()) {
-			// Toggle off
-			voteRepository.delete(existing.get());
-			long count = voteRepository.countByIdeaId(ideaId);
-			return new Result(false, count);
-		}
-
-		VotingParticipant voter = resolveParticipant(voterProfile)
+		VotingParticipant voter = directory.resolveParticipant(voterProfile)
 				.orElseThrow(() -> new ParticipantNotEligibleException(userId));
 		List<IdeaVote> currentVotes = voteRepository.findAllByUserIdAndHackathonId(userId, idea.getHackathonId());
-		List<Idea> currentTrackIdeas = currentVotes.stream().map(IdeaVote::getIdeaId).map(ideaRepository::findById)
-				.flatMap(Optional::stream).filter(votedIdea -> idea.getCategory().equalsIgnoreCase(votedIdea.getCategory()))
-				.toList();
-		if (currentTrackIdeas.size() >= MAX_VOTES_PER_TRACK) {
-			throw new VoteLimitExceededException(MAX_VOTES_PER_TRACK);
+		List<Idea> currentTrackIdeas = currentVotes.stream()
+				.filter(vote -> existing.isEmpty() || !vote.getIdeaId().equals(ideaId)).map(IdeaVote::getIdeaId)
+				.map(ideaRepository::findById).flatMap(Optional::stream)
+				.filter(votedIdea -> idea.getCategory().equalsIgnoreCase(votedIdea.getCategory())).toList();
+		if (existing.isEmpty() && currentTrackIdeas.size() >= maxVotesPerTrack) {
+			throw new VoteLimitExceededException(maxVotesPerTrack);
 		}
-
-		VotingParticipant projectOwner = resolveProjectOwner(idea);
 		String voterDepartment = departmentCode(voter.getOrganizationalUnit());
-		String projectDepartment = departmentCode(projectOwner.getOrganizationalUnit());
-		if (voterDepartment.equalsIgnoreCase(projectDepartment)) {
-			long ownDepartmentVotes = currentTrackIdeas.stream().map(this::resolveProjectOwner)
-					.map(VotingParticipant::getOrganizationalUnit)
-					.map(VoteIdeaUseCase::departmentCode).filter(voterDepartment::equalsIgnoreCase).count();
-			if (ownDepartmentVotes >= MAX_OWN_DEPARTMENT_VOTES_PER_TRACK) {
-				throw new OwnDepartmentVoteLimitExceededException(voterDepartment,
-						MAX_OWN_DEPARTMENT_VOTES_PER_TRACK);
-			}
+		long ownVotes = currentTrackIdeas.stream().map(this::resolveProjectOwner)
+				.map(VotingParticipant::getOrganizationalUnit).map(VoteIdeaUseCase::departmentCode)
+				.filter(voterDepartment::equalsIgnoreCase).count();
+		int resultingTotal = currentTrackIdeas.size();
+		if (existing.isEmpty()) {
+			resultingTotal++;
+			if (voterDepartment.equalsIgnoreCase(departmentCode(resolveProjectOwner(idea).getOrganizationalUnit())))
+				ownVotes++;
+		}
+		if (ownVotes * 2 > resultingTotal) {
+			throw new IllegalArgumentException(existing.isPresent()
+					? "Keep at least 50% of your votes outside your department. Remove a same-department vote first."
+					: "At least 50% of your votes must go outside your department. Vote for another department first.");
+		}
+		if (existing.isPresent()) {
+			voteRepository.delete(existing.get());
+			return new Result(false, voteRepository.countByIdeaId(ideaId));
 		}
 
 		voteRepository.save(new IdeaVote(ideaId, userId));
@@ -95,14 +89,32 @@ public class VoteIdeaUseCase {
 		return new Result(true, count);
 	}
 
+	/**
+	 * Explicitly reset a user's track, including invalid ballots left by older
+	 * rules.
+	 */
+	@Transactional
+	public void clearTrack(UUID hackathonId, UUID userId, String category) {
+		if (category == null || category.isBlank())
+			throw new IllegalArgumentException("An award category is required");
+		profileRepository.findByIdForUpdate(userId).orElseThrow(() -> new ParticipantNotEligibleException(userId));
+		var selected = voteRepository.findAllByUserIdAndHackathonId(userId, hackathonId).stream()
+				.filter(vote -> ideaRepository.findById(vote.getIdeaId())
+						.map(idea -> category.equalsIgnoreCase(idea.getCategory())).orElse(false))
+				.toList();
+		voteRepository.deleteAll(selected);
+	}
+
 	private VotingParticipant resolveProjectOwner(Idea idea) {
 		Profile profile = profileRepository.findById(nomineeId(idea))
 				.orElseThrow(() -> new ProjectDepartmentUnknownException(idea.getId()));
-		return resolveParticipant(profile).orElseThrow(() -> new ProjectDepartmentUnknownException(idea.getId()));
+		return directory.resolveParticipant(profile)
+				.orElseThrow(() -> new ProjectDepartmentUnknownException(idea.getId()));
 	}
 
 	static UUID nomineeId(Idea idea) {
-		if (idea.getProjectAttachments() == null || idea.getProjectAttachments().isBlank()) return idea.getCreatedBy();
+		if (idea.getProjectAttachments() == null || idea.getProjectAttachments().isBlank())
+			return idea.getCreatedBy();
 		try {
 			var attachments = new ObjectMapper().readTree(idea.getProjectAttachments());
 			for (var attachment : attachments) {
@@ -116,48 +128,11 @@ public class VoteIdeaUseCase {
 		return idea.getCreatedBy();
 	}
 
-	private Optional<VotingParticipant> resolveParticipant(Profile profile) {
-		String emailLocalPart = profile.getEmail().split("@", 2)[0].replaceFirst("(?i)^fixed-term[._-]*", "");
-		Optional<VotingParticipant> byEmail = uniqueParticipant(normalizeIdentity(emailLocalPart));
-		if (byEmail.isPresent())
-			return byEmail;
-
-		Optional<VotingParticipant> byName = uniqueParticipant(normalizeIdentity(profile.getName()));
-		if (byName.isPresent())
-			return byName;
-
-		// Platform administrators need to verify the voting flow even when they are
-		// not members of the imported BD roster. Keep them in one explicit virtual
-		// department so the same 4-vote total and 2-vote own-department limits still
-		// apply. Non-admin accounts must continue to match the roster uniquely.
-		if (profile.getRole() == Profile.Role.ADMIN) {
-			return Optional.of(new VotingParticipant("admin:" + profile.getEmail(), "ADMIN", profile.getName(),
-					normalizeIdentity(profile.getName())));
-		}
-
-		return Optional.empty();
-	}
-
-	private Optional<VotingParticipant> uniqueParticipant(String normalizedName) {
-		if (normalizedName.isBlank())
-			return Optional.empty();
-		List<VotingParticipant> matches = participantRepository.findAllByNormalizedName(normalizedName);
-		return matches.size() == 1 ? Optional.of(matches.get(0)) : Optional.empty();
-	}
-
 	static String normalizeIdentity(String value) {
-		int slash = value.lastIndexOf('/');
-		String englishName = slash >= 0 ? value.substring(slash + 1) : value;
-		Matcher matcher = NAME_TOKEN.matcher(englishName.toLowerCase(Locale.ROOT));
-		List<String> tokens = matcher.results().map(result -> result.group()).filter(token -> !token.equals("mr"))
-				.filter(token -> !token.equals("ms")).filter(token -> !token.equals("mrs"))
-				.filter(token -> !token.equals("dr")).sorted(Comparator.naturalOrder()).toList();
-		return tokens.stream().collect(Collectors.joining());
+		return NomineeDirectory.normalizeIdentity(value);
 	}
-
-	static String departmentCode(String organizationalUnit) {
-		int separator = organizationalUnit.indexOf('-');
-		return separator < 0 ? organizationalUnit : organizationalUnit.substring(0, separator);
+	static String departmentCode(String value) {
+		return NomineeDirectory.departmentCode(value);
 	}
 
 	public static class IdeaNotFoundException extends RuntimeException {

@@ -66,6 +66,7 @@ interface Project {
   title: string
   description: string
   nominee_name: string
+  nominee_org_code: string
   team_members: Array<{
     id: string
     name: string
@@ -127,6 +128,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   const { user } = useAuthStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [confirmClearVotes, setConfirmClearVotes] = useState(false)
+  const [clearingVotes, setClearingVotes] = useState(false)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [modalOpened, setModalOpened] = useState(false)
   const [nominees, setNominees] = useState<Array<{ id: string; name: string; email: string }>>([])
@@ -193,6 +196,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               id: idea.id,
               title: idea.title,
               description: idea.description,
+              nominee_org_code: idea.projectAttachments?.find((attachment) => attachment.type === 'nomination')?.nomineeOrgCode ?? '',
               nominee_name: idea.projectAttachments?.find((attachment) => attachment.type === 'nomination')?.name ?? teamMembers[0]?.name ?? creatorProfile?.name ?? team?.name ?? 'Individual Nominee',
               team_members: teamMembers,
               hackathon_id: hackathon.id,
@@ -385,7 +389,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     return projects.filter(project => {
       const matchesSearch = project.title.toLowerCase().includes(filters.search.toLowerCase()) ||
                            project.description.toLowerCase().includes(filters.search.toLowerCase()) ||
-                           project.nominee_name.toLowerCase().includes(filters.search.toLowerCase())
+                           project.nominee_name.toLowerCase().includes(filters.search.toLowerCase()) ||
+                           project.nominee_org_code.toLowerCase().includes(filters.search.toLowerCase())
       
       const matchesCategory = !filters.category || project.category === filters.category
       const matchesTechnology = !filters.technology || project.technologies.includes(filters.technology)
@@ -402,7 +407,22 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     (track) => track.value === uploadForm.category
   )
 
+  const clearTrackVotes = async () => {
+    if (!selectedProject || clearingVotes) return
+    setClearingVotes(true)
+    try {
+      await IdeaService.clearTrackVotes(selectedProject.hackathon_id, selectedProject.category)
+      await loadProjects()
+      setModalOpened(false)
+      setConfirmClearVotes(false)
+      notifications.show({ title: 'Votes reset', message: 'You can now select nominees again.', color: 'teal' })
+    } catch {
+      notifications.show({ title: 'Error', message: 'Unable to save changes. Please try again.', color: 'red' })
+    } finally { setClearingVotes(false) }
+  }
+
   const openProjectModal = (project: Project) => {
+    setConfirmClearVotes(false)
     setSelectedProject(project)
     setModalOpened(true)
     if (user?.role === 'participant' && !assignedJudgeHackathons.has(project.hackathon_id)) {
@@ -529,10 +549,10 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                           onChange={(event) => setUploadForm((current) => ({ ...current, nomineePosition: event.target.value }))} />
                       </Grid.Col>
                       <Grid.Col span={{ base: 12, sm: 6 }}>
-                        <TextInput label="Nominating head of department" value={uploadForm.nominatingHead}
+                        <TextInput label="Nominating HoD" value={uploadForm.nominatingHead}
                           onChange={(event) => setUploadForm((current) => ({ ...current, nominatingHead: event.target.value }))} />
                       </Grid.Col>
-                      <Grid.Col span={{ base: 12, sm: 7 }}>
+                      <Grid.Col span={{ base: 12, sm: 6 }}>
                         <TextInput
                           label="Contribution title"
                           required
@@ -541,7 +561,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                           onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
                         />
                       </Grid.Col>
-                      <Grid.Col span={{ base: 12, sm: 5 }}>
+                      <Grid.Col span={{ base: 12, sm: 6 }}>
                         <FileInput
                           label="Nominee photo"
                           required
@@ -557,12 +577,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
                   <div className="dp-fieldset">
                     <div className="dp-nomination-question">
-                      <Text className="dp-field-number">01</Text>
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label="Executive summary"
+                          label={<><span className="dp-question-number" aria-hidden="true">01</span><span>Executive summary</span></>}
                           required
-                          minRows={6}
+                          minRows={4}
                           maxLength={1200}
                           placeholder="Summarize the contribution in 3–5 sentences."
                           value={uploadForm.executiveSummary}
@@ -574,12 +593,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
                   <div className="dp-fieldset">
                     <div className="dp-nomination-question">
-                      <Text className="dp-field-number">02</Text>
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label="Core achievement & business impact"
+                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Achievements & impact</span></>}
                           required
-                          minRows={6}
+                          minRows={4}
                           maxLength={2400}
                           placeholder="Include measurable results, financial figures, currency and measurement period."
                           value={uploadForm.achievementImpact}
@@ -591,14 +609,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
                   <div className="dp-fieldset">
                     <div className="dp-nomination-question">
-                      <Text className="dp-field-number">03</Text>
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label="High-Performance Culture demonstration"
+                          label={<><span className="dp-question-number" aria-hidden="true">03</span><span>Culture demonstration</span></>}
                           required
-                          minRows={6}
+                          minRows={4}
                           maxLength={2000}
-                          placeholder="Describe how the contribution meets the selected award criteria."
+                          placeholder="Describe how your actions demonstrate High-Performance Culture and meet the selected award criteria."
                           value={uploadForm.cultureDemonstration}
                           onChange={(event) => setUploadForm((current) => ({ ...current, cultureDemonstration: event.target.value }))}
                         />
@@ -608,10 +625,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
                   <div className="dp-fieldset">
                     <div className="dp-nomination-question">
-                      <Text className="dp-field-number">04</Text>
                       <div style={{ minWidth: 0 }}>
                         <TextInput
-                          label="Tags"
+                          label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags</span></>}
                           placeholder="AI, quality, customer experience"
                           value={uploadForm.technologies}
                           onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
@@ -776,8 +792,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <Title order={4} lineClamp={1}>{project.title}</Title>
                     <Group gap={6} mt={5}>
                       <IconUser size={13} />
-                      <Text size="sm" fw={550}>{project.nominee_name}</Text>
+                      <Text size="sm" fw={550} translate="no">{project.nominee_name}</Text>
                     </Group>
+                    <Text size="sm" c="dimmed" mt={4}><span>Department</span>: <span translate="no">{project.nominee_org_code.split('-')[0] || '—'}</span></Text>
                   </div>
                   <Text size="sm" c="dimmed" lineClamp={2}>{project.description}</Text>
 
@@ -898,7 +915,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   <Group key={member.id} gap="xs">
                     <Avatar size="sm" />
                     <div>
-                      <Text size="sm" fw={500}>{member.name}</Text>
+                      <Text size="sm" fw={500} translate="no">{member.name}</Text>
+                      <Text size="sm" c="dimmed"><span>Department</span>: <span translate="no">{selectedProject.nominee_org_code.split('-')[0] || '—'}</span></Text>
+                      <Text size="sm" c="dimmed"><span>Org. code</span>: <span translate="no">{selectedProject.nominee_org_code || '—'}</span></Text>
                       {member.role && <Text size="sm" c="dimmed">{member.role}</Text>}
                     </div>
                   </Group>
@@ -966,7 +985,17 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               {selectedProject.user_vote ? 'Voted' : 'Vote'} ({selectedProject.votes})
             </Button>
 
-            <NominationComments key={selectedProject.id} ideaId={selectedProject.id} userId={user.id} />
+            {confirmClearVotes ? (
+              <Stack gap="xs">
+                <Text size="sm">Reset all your votes in this track?</Text>
+                <Group justify="flex-end">
+                  <Button variant="subtle" disabled={clearingVotes} onClick={() => setConfirmClearVotes(false)}>Cancel</Button>
+                  <Button color="red" loading={clearingVotes} onClick={() => void clearTrackVotes()}>Reset votes</Button>
+                </Group>
+              </Stack>
+            ) : <Button variant="subtle" color="gray" onClick={() => setConfirmClearVotes(true)}>Reset my track votes</Button>}
+
+            <NominationComments key={selectedProject.id} ideaId={selectedProject.id} userId={user.id} isAdmin={user.role === 'admin'} />
           </Stack>
         )}
       </Modal>

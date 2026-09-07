@@ -40,6 +40,8 @@ class IdeaControllerTest {
 	@Autowired
 	MockMvc mvc;
 	@MockBean
+	NomineeDirectory nomineeDirectory;
+	@MockBean
 	SubmitIdeaUseCase submitIdeaUseCase;
 	@MockBean
 	GetIdeasUseCase getIdeasUseCase;
@@ -88,7 +90,8 @@ class IdeaControllerTest {
 
 	@Test
 	void create_idea_valid_returns_201() throws Exception {
-		when(submitIdeaUseCase.executeNomination(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(idea());
+		when(submitIdeaUseCase.executeNomination(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+				any())).thenReturn(idea());
 		mvc.perform(post("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asParticipant(USER_ID))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"title\":\"My Idea\",\"description\":\"Desc\",\"category\":\"tech\"}"))

@@ -36,13 +36,13 @@ class DigitalPioneerFlowIT extends PostgresIntegrationTest {
 	@Test
 	void nomination_and_committee_evaluation_round_trip() {
 		UUID adminId = UUID.fromString(insertProfile("pioneer-admin@test.com", "Pioneer Admin", "admin"));
-		UUID nomineeId = UUID.fromString(insertProfile("nominee@test.com", "Nominee", "participant"));
+		UUID nomineeId = UUID.fromString(insertProfile("leoxu@bosch.com", "XU Leo", "participant"));
 		UUID judgeId = UUID.fromString(insertProfile("judge@test.com", "Judge", "participant"));
 		UUID unassignedId = UUID.fromString(insertProfile("unassigned@test.com", "Unassigned", "participant"));
 
 		var award = createHackathon.execute(new CreateHackathonUseCase.Command("Digital Pioneer 2026",
-				"Annual individual award", Instant.parse("2026-01-01T00:00:00Z"),
-				Instant.parse("2026-12-31T23:59:59Z"), 2, 100, adminId, null, List.of(), List.of()));
+				"Annual individual award", Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-12-31T23:59:59Z"),
+				2, 100, adminId, null, List.of(), List.of()));
 
 		var criteria = criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(award.getId());
 		assertThat(criteria).hasSize(2);
@@ -59,15 +59,16 @@ class DigitalPioneerFlowIT extends PostgresIntegrationTest {
 		String nomination = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + nomineeId
 				+ "\",\"name\":\"Nominee\",\"orgCode\":\"BD/DPA-SRE3\"}]";
 		var idea = submitIdea.executeNomination("Customer breakthrough", "Evidence", award.getId(), teamId, adminId,
-				"Customer Values", List.of("digital-pioneer"), Idea.Status.SUBMITTED,
-				"https://example.com/evidence", null, nomination);
-		assertThat(idea.getProjectAttachments()).isEqualTo(nomination);
+				"Customer Values", List.of("digital-pioneer"), Idea.Status.SUBMITTED, "https://example.com/evidence",
+				null, nomination);
+		assertThat(idea.getProjectAttachments()).contains("BD/DPA-GOI7").contains("nomineeOrgCode");
 
 		inviteJudge.execute(award.getId(), judgeId, adminId);
-		var submitted = submitEvaluation.submitEvaluation(award.getId(), idea.getId(), judgeId,
-				List.of(new SubmitJudgeScoreUseCase.CriterionScore(criteria.get(0).getId(), 9),
-						new SubmitJudgeScoreUseCase.CriterionScore(criteria.get(1).getId(), 7)),
-				"Strong evidence");
+		var submitted = submitEvaluation
+				.submitEvaluation(award.getId(), idea.getId(), judgeId,
+						List.of(new SubmitJudgeScoreUseCase.CriterionScore(criteria.get(0).getId(), 9),
+								new SubmitJudgeScoreUseCase.CriterionScore(criteria.get(1).getId(), 7)),
+						"Strong evidence");
 		assertThat(submitted).hasSize(2).allMatch(score -> "Strong evidence".equals(score.getComment()));
 
 		var refreshed = getScores.getScoresForHackathon(award.getId(), judgeId, false);

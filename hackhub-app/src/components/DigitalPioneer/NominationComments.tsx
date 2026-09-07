@@ -4,7 +4,7 @@ import { IdeaService } from '../../services/ideaService'
 import type { Comment } from '../../services/ideaService'
 import { ProfileService } from '../../services/profileService'
 
-export function NominationComments({ ideaId, userId }: { ideaId: string; userId: string }) {
+export function NominationComments({ ideaId, userId, isAdmin = false }: { ideaId: string; userId: string; isAdmin?: boolean }) {
   const [comments, setComments] = useState<Comment[]>([])
   const [authors, setAuthors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -14,6 +14,30 @@ export function NominationComments({ ideaId, userId }: { ideaId: string; userId:
   const [posting, setPosting] = useState(false)
   const [postError, setPostError] = useState(false)
   const postingRef = useRef(false)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState(false)
+  const [mutating, setMutating] = useState(false)
+  const mutationRef = useRef(false)
+
+  const mutate = async (operation: () => Promise<unknown>) => {
+    if (mutationRef.current) return
+    mutationRef.current = true
+    setMutating(true)
+    setMutationError(false)
+    try {
+      await operation()
+      setEditing(null)
+      setDeleting(null)
+      setRevision((value) => value + 1)
+    } catch {
+      setMutationError(true)
+    } finally {
+      mutationRef.current = false
+      setMutating(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -70,12 +94,40 @@ export function NominationComments({ ideaId, userId }: { ideaId: string; userId:
                   {new Date(comment.createdAt).toLocaleString(document.documentElement.lang || 'zh-CN')}
                 </Text>
               </Group>
-              <Text style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }} translate="no">{comment.content}</Text>
+              {editing === comment.id ? (
+                <Stack gap="xs">
+                  <Textarea label="Edit comment" value={editDraft} maxLength={5000} disabled={mutating}
+                    onChange={(event) => setEditDraft(event.currentTarget.value)} minRows={3} />
+                  <Group gap="xs" justify="flex-end">
+                    <Button variant="subtle" disabled={mutating} onClick={() => setEditing(null)}>Cancel</Button>
+                    <Button disabled={!editDraft.trim()} loading={mutating}
+                      onClick={() => void mutate(() => IdeaService.updateComment(ideaId, comment.id, editDraft.trim()))}>Save</Button>
+                  </Group>
+                </Stack>
+              ) : <Text style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }} translate="no">{comment.content}</Text>}
+              {deleting === comment.id ? (
+                <Stack gap="xs" mt="xs">
+                  <Text size="sm">Delete this comment?</Text>
+                  <Group gap="xs" justify="flex-end">
+                    <Button variant="subtle" disabled={mutating} onClick={() => setDeleting(null)}>Cancel</Button>
+                    <Button color="red" loading={mutating}
+                      onClick={() => void mutate(() => IdeaService.deleteComment(ideaId, comment.id))}>Confirm deletion</Button>
+                  </Group>
+                </Stack>
+              ) : editing !== comment.id && (
+                <Group gap="xs" justify="flex-end" mt="xs">
+                  {comment.userId === userId && <Button size="compact-sm" variant="subtle" disabled={mutating}
+                    onClick={() => { setEditing(comment.id); setEditDraft(comment.content); setDeleting(null); setMutationError(false) }}>Edit</Button>}
+                  {(comment.userId === userId || isAdmin) && <Button size="compact-sm" color="red" variant="subtle" disabled={mutating}
+                    onClick={() => { setDeleting(comment.id); setEditing(null); setMutationError(false) }}>Delete</Button>}
+                </Group>
+              )}
             </div>
           ))}
         </Stack>
       )}
-      <Textarea label="Add a comment" value={draft} onChange={(event) => setDraft(event.currentTarget.value)} minRows={3} disabled={posting} />
+      {mutationError && <Alert color="red" role="alert">Unable to save changes. Please try again.</Alert>}
+      <Textarea maxLength={5000} label="Add a comment" value={draft} onChange={(event) => setDraft(event.currentTarget.value)} minRows={3} disabled={posting} />
       {postError && <Alert color="red" role="alert">Unable to post comment. Please try again.</Alert>}
       <Group justify="flex-end">
         <Button onClick={() => void submit()} loading={posting} disabled={!draft.trim()}>Post comment</Button>

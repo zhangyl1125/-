@@ -41,6 +41,6 @@ describe('LanguageProvider', () => {
 
   it('leaves user content without a known UI translation unchanged', () => {
     expect(translateUiText("Alice's Custom Hackathon")).toBe("Alice's Custom Hackathon")
-    expect(translateUiText('Spring 2026 Hackathon')).toBe('2026 春季黑客松')
+    expect(translateUiText('Spring 2026 Hackathon')).toBe('2026 数字先锋奖')
   })
 })

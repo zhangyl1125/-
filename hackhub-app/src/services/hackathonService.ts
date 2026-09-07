@@ -56,27 +56,43 @@ export interface JudgingConfigInput {
   panelWeight?: number
 }
 
+// Normalize the retired demo copy at the shared API boundary for every award view.
+function awardContent(campaign: Hackathon): Hackathon {
+  const legacyTitle = ['Spring 2026 Hackathon', '2026 春季黑客松'].includes(campaign.title)
+  if (!legacyTitle) return campaign
+  const legacyDescription = ['Build something amazing in 48 hours. Open to all skill levels.', '在 48 小时内打造精彩作品，欢迎所有技能水平的参与者。'].includes(campaign.description)
+  return {
+    ...campaign,
+    title: '2026 Digital Pioneer Award',
+    description: legacyDescription ? 'Recognizing contributions in Customer Values, Innovation Breakthrough, and Collaboration to Win.' : campaign.description,
+  }
+}
+
+function awardPage(page: PageResponse<Hackathon>): PageResponse<Hackathon> {
+  return { ...page, content: page.content.map(awardContent) }
+}
+
 export class HackathonService {
   static async getHackathons(page = 0, size = 20): Promise<PageResponse<Hackathon>> {
-    return api.get(`/api/v1/hackathons?page=${page}&size=${size}`)
+    return awardPage(await api.get(`/api/v1/hackathons?page=${page}&size=${size}`))
   }
 
   static async getHackathon(id: string): Promise<Hackathon> {
-    return api.get(`/api/v1/hackathons/${id}`)
+    return awardContent(await api.get(`/api/v1/hackathons/${id}`))
   }
 
   static async getHackathonsByStatus(
     status: Hackathon['status'], page = 0, size = 20
   ): Promise<PageResponse<Hackathon>> {
-    return api.get(`/api/v1/hackathons?status=${status}&page=${page}&size=${size}`)
+    return awardPage(await api.get(`/api/v1/hackathons?status=${status}&page=${page}&size=${size}`))
   }
 
   static async createHackathon(data: CreateHackathonInput): Promise<Hackathon> {
-    return api.post('/api/v1/hackathons', data)
+    return awardContent(await api.post('/api/v1/hackathons', data))
   }
 
   static async updateHackathon(id: string, data: Partial<CreateHackathonInput>): Promise<Hackathon> {
-    return api.put(`/api/v1/hackathons/${id}`, data)
+    return awardContent(await api.put(`/api/v1/hackathons/${id}`, data))
   }
 
   static async deleteHackathon(id: string): Promise<void> {
@@ -84,14 +100,14 @@ export class HackathonService {
   }
 
   static async joinHackathon(registrationKey: string): Promise<Hackathon> {
-    return api.post('/api/v1/hackathons/join', { registrationKey })
+    return awardContent(await api.post('/api/v1/hackathons/join', { registrationKey }))
   }
 
   static async transitionStatus(id: string, status: Hackathon['status']): Promise<Hackathon> {
-    return api.patch(`/api/v1/hackathons/${id}/status`, { status })
+    return awardContent(await api.patch(`/api/v1/hackathons/${id}/status`, { status }))
   }
 
   static async updateJudgingConfig(id: string, config: JudgingConfigInput): Promise<Hackathon> {
-    return api.patch(`/api/v1/hackathons/${id}/config`, config)
+    return awardContent(await api.patch(`/api/v1/hackathons/${id}/config`, config))
   }
 }

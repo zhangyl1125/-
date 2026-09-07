@@ -20,12 +20,17 @@ class CommentUseCaseTest {
 
 	@Mock
 	CommentRepository commentRepository;
+	@Mock
+	wtf.hackhub.infrastructure.persistence.idea.IdeaRepository ideaRepository;
+	@Mock
+	wtf.hackhub.infrastructure.persistence.auth.ProfileRepository profileRepository;
 	@InjectMocks
 	CommentUseCase useCase;
 
 	@Test
 	void adds_comment() {
 		UUID ideaId = UUID.randomUUID();
+		when(ideaRepository.existsById(ideaId)).thenReturn(true);
 		UUID userId = UUID.randomUUID();
 		Comment c = new Comment(ideaId, userId, "great idea");
 		when(commentRepository.save(any())).thenReturn(c);
@@ -37,6 +42,7 @@ class CommentUseCaseTest {
 	@Test
 	void lists_comments_for_idea() {
 		UUID ideaId = UUID.randomUUID();
+		when(ideaRepository.existsById(ideaId)).thenReturn(true);
 		when(commentRepository.findByIdeaIdOrderByCreatedAtAsc(ideaId))
 				.thenReturn(List.of(new Comment(ideaId, UUID.randomUUID(), "first")));
 

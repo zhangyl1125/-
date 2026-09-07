@@ -63,6 +63,8 @@ management:
       show-details: when_authorized
 
 app:
+  voting:
+    max-votes-per-track: 4
   auth:
     # Keep enabled for HTTPS deployments. HTTP-only local/internal Compose sets this to false.
     cookie-secure: ${APP_AUTH_COOKIE_SECURE:true}

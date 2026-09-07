@@ -29,8 +29,8 @@ public class UploadFileUseCase {
 		StoragePort.validateSize(file.getSize());
 
 		String detectedMime;
-		try {
-			detectedMime = tika.detect(file.getInputStream());
+		try (var stream = file.getInputStream()) {
+			detectedMime = tika.detect(stream);
 		} catch (IOException e) {
 			throw new FileReadException(e);
 		}
@@ -39,8 +39,9 @@ public class UploadFileUseCase {
 		String extension = extractExtension(file.getOriginalFilename());
 		String key = filenamePrefix + "/" + UUID.randomUUID() + extension;
 
-		try {
-			storagePort.upload(bucket, key, file.getInputStream(), file.getSize(), detectedMime);
+		try (var stream = file.getInputStream()) {
+			storagePort.ensureBucketExists(bucket);
+			storagePort.upload(bucket, key, stream, file.getSize(), detectedMime);
 		} catch (IOException e) {
 			throw new FileReadException(e);
 		}

@@ -599,6 +599,7 @@
   -webkit-backdrop-filter: blur(24px);
 }
 
+.dp-management-page .mantine-Card-root,
 .dp-form-shell,
 .dp-rules-panel,
 .dp-ranking-shell,
@@ -707,8 +708,9 @@
 }
 
 .dp-nomination-flow {
-  max-width: 1060px;
-  margin: clamp(30px, 4vw, 48px) auto 0;
+  width: 100%;
+  min-width: 0;
+  margin: clamp(30px, 4vw, 48px) 0 0;
 }
 
 .dp-flow-heading {
@@ -728,7 +730,7 @@
 .dp-nomination-tracks {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: clamp(16px, 2vw, 24px);
 }
 
 .dp-page .dp-nomination-track {
@@ -737,7 +739,7 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 208px;
+  min-height: 232px;
   height: 100%;
   flex-direction: column;
   gap: 0;
@@ -1094,26 +1096,37 @@
   }
 }
 
-/* Keep numbered form questions aligned independently of the label length. */
-.dp-nomination-question {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: start;
-  gap: 20px;
+/* Numbered labels share one compact row; every control uses the full form width. */
+.dp-form-shell .dp-fieldset {
+  padding-block: 20px;
 }
 
-.dp-nomination-question .dp-field-number {
-  padding-top: 2px;
+.dp-nomination-question {
+  min-width: 0;
+}
+
+.dp-question-number {
+  flex: 0 0 auto;
+  color: var(--dp-orchid);
   font-family: var(--app-font-body);
-  font-size: 1.5rem;
-  line-height: 1.2;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: inherit;
   font-variant-numeric: tabular-nums;
 }
 
 .dp-nomination-question .mantine-InputWrapper-label {
-  margin-bottom: 4px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
   font-weight: 650;
   line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dp-nomination-question .mantine-InputWrapper-required {
+  margin-inline-start: -4px;
 }
 
 .dp-nomination-question .mantine-InputWrapper-description {
@@ -1122,15 +1135,36 @@
 }
 
 .dp-nomination-question .mantine-Textarea-input {
-  min-height: 180px;
-  padding: 14px 16px;
+  min-height: 144px;
+  padding: 12px 14px;
   line-height: 1.6;
   resize: vertical;
 }
 
 @media (max-width: 48em) {
-  .dp-nomination-question {
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 12px;
+  .dp-form-shell .mantine-InputWrapper-label {
+    font-size: 0.875rem;
   }
+
+  .dp-nomination-question .mantine-InputWrapper-label {
+    gap: 6px;
+  }
+}
+
+.dp-award-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dp-award-title-link:hover {
+  color: var(--dp-orchid);
+}
+
+.dp-award-title-link:focus-visible {
+  outline: 2px solid var(--dp-orchid);
+  outline-offset: 5px;
+}
+
+.dp-management-page .dp-form-shell {
+  margin-top: 0;
 }

@@ -36,6 +36,11 @@ public class Comment {
 		this.content = content;
 	}
 
+	public void updateContent(String content) {
+		this.content = content;
+		this.updatedAt = Instant.now();
+	}
+
 	@PreUpdate
 	void onUpdate() {
 		this.updatedAt = Instant.now();

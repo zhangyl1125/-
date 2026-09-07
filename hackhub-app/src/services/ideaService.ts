@@ -141,8 +141,20 @@ export class IdeaService {
     return api.post(`/api/v1/ideas/${ideaId}/votes`)
   }
 
-  static async addComment(ideaId: string, content: string): Promise<void> {
+  static async clearTrackVotes(hackathonId: string, category: string): Promise<void> {
+    return api.delete(`/api/v1/hackathons/${hackathonId}/votes?category=${encodeURIComponent(category)}`)
+  }
+
+  static async addComment(ideaId: string, content: string): Promise<Comment> {
     return api.post(`/api/v1/ideas/${ideaId}/comments`, { content })
+  }
+
+  static async updateComment(ideaId: string, commentId: string, content: string): Promise<Comment> {
+    return api.put(`/api/v1/ideas/${ideaId}/comments/${commentId}`, { content })
+  }
+
+  static async deleteComment(ideaId: string, commentId: string): Promise<void> {
+    return api.delete(`/api/v1/ideas/${ideaId}/comments/${commentId}`)
   }
 
   static async getComments(ideaId: string): Promise<Comment[]> {

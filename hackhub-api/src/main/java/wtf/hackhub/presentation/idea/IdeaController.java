@@ -25,13 +25,16 @@ import java.util.UUID;
 public class IdeaController {
 
 	private final SubmitIdeaUseCase submitIdeaUseCase;
+	private final NomineeDirectory nomineeDirectory;
 	private final GetIdeasUseCase getIdeasUseCase;
 	private final VoteIdeaUseCase voteIdeaUseCase;
 	private final CommentUseCase commentUseCase;
 	private final ScoreIdeaUseCase scoreIdeaUseCase;
 
 	public IdeaController(SubmitIdeaUseCase submitIdeaUseCase, GetIdeasUseCase getIdeasUseCase,
-			VoteIdeaUseCase voteIdeaUseCase, CommentUseCase commentUseCase, ScoreIdeaUseCase scoreIdeaUseCase) {
+			VoteIdeaUseCase voteIdeaUseCase, CommentUseCase commentUseCase, ScoreIdeaUseCase scoreIdeaUseCase,
+			NomineeDirectory nomineeDirectory) {
+		this.nomineeDirectory = nomineeDirectory;
 		this.submitIdeaUseCase = submitIdeaUseCase;
 		this.getIdeasUseCase = getIdeasUseCase;
 		this.voteIdeaUseCase = voteIdeaUseCase;
@@ -46,7 +49,7 @@ public class IdeaController {
 	public Page<IdeaResponse> listByHackathon(@PathVariable UUID hackathonId, Pageable pageable,
 			@AuthenticationPrincipal UUID userId) {
 		return getIdeasUseCase.listByHackathon(hackathonId, pageable)
-				.map(idea -> IdeaResponse.from(idea, getIdeasUseCase.hasVoted(idea.getId(), userId)));
+				.map(idea -> response(idea, getIdeasUseCase.hasVoted(idea.getId(), userId)));
 	}
 
 	@Operation(summary = "Submit a new idea to a hackathon")
@@ -57,8 +60,9 @@ public class IdeaController {
 	@ResponseStatus(HttpStatus.CREATED)
 	public IdeaResponse create(@PathVariable UUID hackathonId, @Valid @RequestBody CreateIdeaRequest req,
 			@AuthenticationPrincipal UUID userId) {
-		return IdeaResponse.from(submitIdeaUseCase.executeNomination(req.title(), req.description(), hackathonId, req.teamId(),
-				userId, req.category(), req.tags(), req.status(), req.repositoryUrl(), req.demoUrl(), req.projectAttachments()), false);
+		return response(submitIdeaUseCase.executeNomination(req.title(), req.description(), hackathonId, req.teamId(),
+				userId, req.category(), req.tags(), req.status(), req.repositoryUrl(), req.demoUrl(),
+				req.projectAttachments()), false);
 	}
 
 	@Operation(summary = "Get an idea by ID")
@@ -67,7 +71,7 @@ public class IdeaController {
 			@ApiResponse(responseCode = "404", description = "Idea not found")})
 	@GetMapping("/api/v1/ideas/{id}")
 	public IdeaResponse getById(@PathVariable UUID id, @AuthenticationPrincipal UUID userId) {
-		return IdeaResponse.from(getIdeasUseCase.getById(id), getIdeasUseCase.hasVoted(id, userId));
+		return response(getIdeasUseCase.getById(id), getIdeasUseCase.hasVoted(id, userId));
 	}
 
 	@Operation(summary = "Update an existing idea")
@@ -81,7 +85,7 @@ public class IdeaController {
 		Idea idea = submitIdeaUseCase.update(id, userId, req.title(), req.description(), req.category(), req.tags(),
 				req.status() != null ? Idea.Status.valueOf(req.status().toUpperCase().replace("-", "_")) : null,
 				req.repositoryUrl(), req.demoUrl(), req.projectAttachments());
-		return IdeaResponse.from(idea, getIdeasUseCase.hasVoted(id, userId));
+		return response(idea, getIdeasUseCase.hasVoted(id, userId));
 	}
 
 	@Operation(summary = "Delete an idea")
@@ -102,6 +106,13 @@ public class IdeaController {
 	public VoteResponse vote(@PathVariable UUID id, @AuthenticationPrincipal UUID userId) {
 		VoteIdeaUseCase.Result result = voteIdeaUseCase.execute(id, userId);
 		return new VoteResponse(result.voted(), result.voteCount());
+	}
+
+	@DeleteMapping("/api/v1/hackathons/{hackathonId}/votes")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void clearTrackVotes(@PathVariable UUID hackathonId, @RequestParam String category,
+			@AuthenticationPrincipal UUID userId) {
+		voteIdeaUseCase.clearTrack(hackathonId, userId, category);
 	}
 
 	@Operation(summary = "List comments on an idea")
@@ -135,6 +146,28 @@ public class IdeaController {
 			@AuthenticationPrincipal UUID userId) {
 		var s = scoreIdeaUseCase.execute(id, userId, req.criteriaId(), req.score());
 		return new ScoreResponse(s.getId(), s.getIdeaId(), s.getUserId(), s.getCriteriaId(), s.getScore());
+	}
+
+	@PutMapping("/api/v1/ideas/{id}/comments/{commentId}")
+	public CommentResponse updateComment(@PathVariable UUID id, @PathVariable UUID commentId,
+			@Valid @RequestBody AddCommentRequest req, @AuthenticationPrincipal UUID userId) {
+		return CommentResponse.from(commentUseCase.update(id, commentId, userId, req.content()));
+	}
+
+	@DeleteMapping("/api/v1/ideas/{id}/comments/{commentId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteComment(@PathVariable UUID id, @PathVariable UUID commentId,
+			@AuthenticationPrincipal UUID userId) {
+		commentUseCase.delete(id, commentId, userId);
+	}
+
+	private IdeaResponse response(Idea idea, boolean voted) {
+		var result = IdeaResponse.from(idea, voted);
+		return new IdeaResponse(result.id(), result.title(), result.description(), result.hackathonId(),
+				result.teamId(), result.createdBy(), result.category(), result.tags(), result.votes(), result.status(),
+				result.attachments(), result.repositoryUrl(), result.demoUrl(),
+				nomineeDirectory.enrich(result.projectAttachments(), false), result.totalScore(), result.voteCount(),
+				result.userHasVoted(), result.createdAt(), result.updatedAt());
 	}
 
 	// ── DTOs ──────────────────────────────────────────────────────────────────
@@ -177,7 +210,7 @@ public class IdeaController {
 		}
 	}
 
-	public record AddCommentRequest(@NotBlank String content) {
+	public record AddCommentRequest(@NotBlank @jakarta.validation.constraints.Size(max = 5000) String content) {
 	}
 
 	public record ScoreRequest(UUID criteriaId, int score) {

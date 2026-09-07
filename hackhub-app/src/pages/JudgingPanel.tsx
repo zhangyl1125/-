@@ -15,7 +15,7 @@ import {
   Loader,
   Progress,
   Select,
-  Slider,
+  NumberInput,
   Stack,
   Text,
   Textarea,
@@ -43,10 +43,13 @@ import { JudgingService } from '../services/judgingService'
 import { VotingService } from '../services/votingService'
 import type { VotingCriteria } from '../services/votingService'
 import { PermissionService } from '../utils/permissions'
+import { useLanguage } from '../contexts/LanguageContext'
+import { translateUiText } from '../contexts/uiTranslations'
+import { NominationEvidence } from '../components/DigitalPioneer/NominationEvidence'
 import './DigitalPioneer.css'
 
 interface IdeaScores {
-  [criteriaId: string]: number
+  [criteriaId: string]: number | string
 }
 
 interface ScoreSubmission {
@@ -80,6 +83,7 @@ function matchingRubric(criterion: VotingCriteria, index: number) {
 interface IdeaJudgingCardProps {
   idea: Idea
   criteria: VotingCriteria[]
+  onDelete: () => void
   onSubmit: (submission: ScoreSubmission) => void
   isSubmitting: boolean
   alreadyScored: boolean
@@ -91,25 +95,28 @@ function IdeaJudgingCard({
   idea,
   criteria,
   onSubmit,
+  onDelete,
   isSubmitting,
   alreadyScored,
   savedScores,
   canSubmitRating,
 }: IdeaJudgingCardProps): ReactElement {
+  const { language } = useLanguage()
   const nominee = idea.projectAttachments?.find((attachment) => attachment.type === 'nomination')
   const saved = savedEvaluation(savedScores)
   const [scores, setScores] = useState<IdeaScores>(() =>
-    Object.fromEntries(criteria.map((criterion) => [criterion.id, saved.scores[criterion.id] ?? 7]))
+    Object.fromEntries(criteria.map((criterion) => [criterion.id, saved.scores[criterion.id] ?? '']))
   )
   const [recommendation, setRecommendation] = useState<string | null>(saved.recommendation)
   const [comment, setComment] = useState(saved.comment)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const weightedScore = criteria.reduce(
-    (total, criterion) => total + (scores[criterion.id] ?? 0) * (criterion.weight / 100),
+    (total, criterion) => total + Number(scores[criterion.id] || 0) * (criterion.weight / 100),
     0
   )
   const canSubmit = canSubmitRating && criteria.length > 0
-    && criteria.every((criterion) => Number.isInteger(scores[criterion.id]))
+    && criteria.every((criterion) => Number.isInteger(scores[criterion.id]) && Number(scores[criterion.id]) >= 1 && Number(scores[criterion.id]) <= 10)
     && recommendation !== null
 
   return (
@@ -139,8 +146,8 @@ function IdeaJudgingCard({
               {idea.tags.slice(0, 4).map((tag) => <Badge key={tag} size="sm" variant="outline">{tag}</Badge>)}
             </Group>
             <Stack gap="xs" mt="auto">
-              {(idea.projectAttachments ?? []).filter((attachment) => attachment.type !== 'nomination' && /^https?:\/\//i.test(attachment.url)).map((attachment) => (
-                <Button key={attachment.url} component="a" href={attachment.url} target="_blank" rel="noopener noreferrer" variant="light" rightSection={<IconExternalLink size={15} />}>{attachment.name || 'Review attachment'}</Button>
+              {(idea.projectAttachments ?? []).filter((attachment) => attachment.type !== 'nomination').map((attachment) => (
+                <NominationEvidence key={attachment.storageKey || attachment.url} attachment={attachment} />
               ))}
               {idea.repositoryUrl ? (
                 <Button component="a" href={idea.repositoryUrl} target="_blank" variant="light" rightSection={<IconExternalLink size={15} />}>
@@ -164,12 +171,13 @@ function IdeaJudgingCard({
               </div>
               <div style={{ textAlign: 'right' }}>
                 <Text className="dp-utility" size="sm" c="dimmed">Weighted total</Text>
-                <Text className="dp-field-number" fw={700}>{weightedScore.toFixed(1)}</Text>
+                <Text className="dp-field-number" fw={700}>{criteria.every((criterion) => scores[criterion.id] !== '') ? weightedScore.toFixed(1) : '—'}</Text>
               </div>
             </Group>
 
             {criteria.map((criterion, index) => {
-              const score = scores[criterion.id] ?? 7
+              const score = scores[criterion.id] ?? ''
+              const numericScore = Number(score)
               const rubric = matchingRubric(criterion, index)
               return (
                 <div className="dp-fieldset" key={criterion.id}>
@@ -177,27 +185,30 @@ function IdeaJudgingCard({
                     <div>
                       <Group gap="xs">
                         <Text fw={800}>{rubric.name}</Text>
-                        <Text className="dp-score-accent" fw={700}>{rubric.nameZh}</Text>
                         <Badge variant="filled" color="dark">{criterion.weight}%</Badge>
                       </Group>
                       <Text size="sm" c="dimmed" mt={5}>{rubric.description}</Text>
                     </div>
-                    <Badge color={getScoreTone(score)} variant="light" size="lg">
-                      {score} · {getScoreLabel(score, rubric.key === 'impact')}
+                    <Badge color={getScoreTone(numericScore)} variant="light" size="lg">
+                      {score === '' ? <span>Not scored</span> : <><span>{score} · </span><span>{getScoreLabel(numericScore, rubric.key === 'impact')}</span></>}
                     </Badge>
                   </Group>
-                  <Slider
-                    aria-label={`${rubric.name} score`}
+                  <NumberInput
+                    label={rubric.key === 'impact' ? 'Business Impact score' : 'Behavior score'}
+                    description="Enter a whole number from 1 to 10."
+                    placeholder="Enter score"
+                    required
                     value={score}
                     onChange={(value) => setScores((current) => ({ ...current, [criterion.id]: value }))}
                     min={1}
                     max={10}
-                    step={1}
-                    marks={[1, 4, 7, 10].map((value) => ({ value, label: String(value) }))}
-                    color={getScoreTone(score)}
+                    allowDecimal={false}
+                    allowNegative={false}
+                    disabled={!canSubmitRating || isSubmitting}
                     size="md"
+                    maw={320}
                   />
-                  <Accordion variant="contained" mt={32}>
+                  <Accordion variant="contained" mt="md">
                     <Accordion.Item value={`${criterion.id}-guide`}>
                       <Accordion.Control>View scoring guide</Accordion.Control>
                       <Accordion.Panel>
@@ -224,8 +235,9 @@ function IdeaJudgingCard({
                     label="Recommendation"
                    
                     required
+                    disabled={!canSubmitRating || isSubmitting}
                     placeholder="Select a recommendation"
-                    data={DIGITAL_PIONEER_RECOMMENDATIONS.map(({ value, label }) => ({ value, label }))}
+                    data={DIGITAL_PIONEER_RECOMMENDATIONS.map(({ value, label }) => ({ value, label: language === 'zh' ? translateUiText(label) : label }))}
                     value={recommendation}
                     onChange={setRecommendation}
                   />
@@ -234,6 +246,7 @@ function IdeaJudgingCard({
                   <Textarea
                     label="Comments, if any"
                    
+                    disabled={!canSubmitRating || isSubmitting}
                     minRows={3}
                     maxLength={1200}
                     value={comment}
@@ -249,6 +262,15 @@ function IdeaJudgingCard({
               </Alert>
             ) : null}
 
+            {savedScores.length > 0 && canSubmitRating && (
+              <Group justify="flex-end">
+                {confirmDelete ? <>
+                  <Text size="sm">Remove your rating and comments?</Text>
+                  <Button variant="subtle" disabled={isSubmitting} onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                  <Button color="red" loading={isSubmitting} onClick={onDelete}>Confirm deletion</Button>
+                </> : <Button color="red" variant="subtle" disabled={isSubmitting} onClick={() => setConfirmDelete(true)}>Delete rating</Button>}
+              </Group>
+            )}
             <Group justify="space-between" align="center">
               <div style={{ flex: 1, maxWidth: 260 }}>
                 <Progress value={weightedScore * 10} color={getScoreTone(weightedScore)} size="sm" />
@@ -312,7 +334,9 @@ export function JudgingPanel(): ReactElement {
   })
 
   const ownScores = (myScores ?? []).filter((score) => score.judgeId === user?.id)
-  const scoredIdeaIds = new Set(ownScores.map((score) => score.ideaId))
+  const scoredIdeaIds = new Set(ownScores.filter((score) =>
+    (criteria?.length ?? 0) > 0 && criteria!.every((criterion) => ownScores.some((entry) => entry.ideaId === score.ideaId && entry.criterionId === criterion.id))
+  ).map((score) => score.ideaId))
 
   const scoreIdeaMutation = useMutation({
     mutationFn: async (submission: ScoreSubmission) => {
@@ -321,7 +345,7 @@ export function JudgingPanel(): ReactElement {
         .join('\n\n')
       await JudgingService.submitEvaluation(hackathonId!, {
         ideaId: submission.ideaId,
-        scores: Object.entries(submission.scores).map(([criterionId, score]) => ({ criterionId, score })),
+        scores: Object.entries(submission.scores).map(([criterionId, score]) => ({ criterionId, score: Number(score) })),
         comment: note,
       })
       return submission.ideaId
@@ -350,6 +374,20 @@ export function JudgingPanel(): ReactElement {
     },
   })
 
+  const deleteRatingMutation = useMutation({
+    mutationFn: (ideaId: string) => JudgingService.deleteEvaluation(hackathonId!, ideaId),
+    onSuccess: async () => {
+      await Promise.all(['my-judge-scores', 'judging-ideas', 'score-summary', 'all-judge-scores'].map((key) =>
+        queryClient.invalidateQueries({ queryKey: [key, hackathonId] })))
+      setSubmittingIdea(null)
+      notifications.show({ title: 'Rating deleted', message: 'The weighted total and committee ranking have been updated.', color: 'teal' })
+    },
+    onError: () => {
+      setSubmittingIdea(null)
+      notifications.show({ title: 'Error', message: 'Unable to save changes. Please try again.', color: 'red' })
+    },
+  })
+
   if (judgeStatusLoading) {
     return <Center py={100}><Loader size="lg" /></Center>
   }
@@ -364,7 +402,7 @@ export function JudgingPanel(): ReactElement {
             <ThemeIcon size={72} radius="xl" variant="light" color="red"><IconAlertCircle size={34} /></ThemeIcon>
             <Title order={2}>Committee access required</Title>
             <Text ta="center" c="dimmed">Only assigned committee members and award managers can open this evaluation form.</Text>
-            <Button variant="light" onClick={() => navigate(`/hackathons/${hackathonId}`)}>Back to award event</Button>
+            <Button variant="light" onClick={() => navigate(`/awards/${hackathonId}`)}>Back to award event</Button>
           </Stack>
         </Center>
       </Container>
@@ -378,12 +416,12 @@ export function JudgingPanel(): ReactElement {
   const criteriaReady = officialCriteria(criteria ?? [])
 
   return (
-    <Container size={1380} py={{ base: 'md', md: 'xl' }} className="dp-page">
+    <Container size={1240} py={{ base: 'md', md: 'xl' }} className="dp-page">
       <Stack gap="xl">
         <Group justify="space-between" align="flex-end">
           <div>
             <Group gap="xs" mb="md">
-              <ActionIcon variant="subtle" aria-label="Back to award event" onClick={() => navigate(`/hackathons/${hackathonId}`)}>
+              <ActionIcon variant="subtle" aria-label="Back to award event" onClick={() => navigate(`/awards/${hackathonId}`)}>
                 <IconArrowLeft size={18} />
               </ActionIcon>
               <Text className="dp-section-label" style={{ marginBottom: 0 }}>2026 Digital Pioneer · Committee</Text>
@@ -412,9 +450,11 @@ export function JudgingPanel(): ReactElement {
               <Group gap="sm"><IconScale size={20} /><Text fw={800}>Official weighting</Text></Group>
             </Grid.Col>
             {DIGITAL_PIONEER_RUBRIC.map((rubric) => (
-              <Grid.Col span={{ base: 6, sm: 3 }} key={rubric.key}>
-                <Text className="dp-track-code">{rubric.nameZh}</Text>
-                <Text fw={800}>{rubric.name} · {rubric.weight}%</Text>
+              <Grid.Col span={{ base: 12, xs: 6, sm: 3 }} key={rubric.key}>
+                <Group gap="xs" wrap="nowrap">
+                  <Text fw={800}>{rubric.key === 'impact' ? 'Business Impact' : 'Behavior'}</Text>
+                  <Badge variant="light">{rubric.weight}%</Badge>
+                </Group>
               </Grid.Col>
             ))}
             <Grid.Col span={{ base: 12, sm: 2 }}>
@@ -431,7 +471,8 @@ export function JudgingPanel(): ReactElement {
         {error ? <Alert color="red" icon={<IconAlertCircle size={18} />}>{error instanceof Error ? error.message : 'Unable to load evaluation data.'}</Alert> : null}
         {!isLoading && !error && !criteriaReady ? (
           <Alert color="orange" icon={<IconAlertCircle size={18} />}>
-            Configure exactly two criteria totaling 100% before committee scoring: Behavior Demonstration 70% and Business Impact 30%.
+            <Text>Configure exactly two criteria totaling 100% before committee scoring: Behavior Demonstration 70% and Business Impact 30%.</Text>
+            {canManageJudging && <Button mt="md" variant="light" onClick={() => navigate(`/awards/${hackathonId}`)}>Manage evaluation criteria</Button>}
           </Alert>
         ) : null}
         {!isLoading && !error && criteriaReady && submittedIdeas.length === 0 ? (
@@ -446,6 +487,7 @@ export function JudgingPanel(): ReactElement {
             criteria={criteria ?? []}
             alreadyScored={scoredIdeaIds.has(idea.id)}
             isSubmitting={submittingIdea === idea.id}
+            onDelete={() => { setSubmittingIdea(idea.id); deleteRatingMutation.mutate(idea.id) }}
             onSubmit={(submission) => {
               setSubmittingIdea(idea.id)
               scoreIdeaMutation.mutate(submission)

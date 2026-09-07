@@ -96,6 +96,10 @@ export class JudgingService {
     return api.post(`/api/v1/hackathons/${hackathonId}/judging/evaluations`, input)
   }
 
+  static async deleteEvaluation(hackathonId: string, ideaId: string): Promise<void> {
+    return api.delete(`/api/v1/hackathons/${hackathonId}/judging/evaluations/${ideaId}`)
+  }
+
   static async getAllScores(hackathonId: string): Promise<JudgeScore[]> {
     return api.get(`/api/v1/hackathons/${hackathonId}/judging/scores/all`)
   }

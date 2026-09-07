@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { MantineProvider } from '@mantine/core'
 import { NominationComments } from './NominationComments'
 
-const { getComments, addComment } = vi.hoisted(() => ({ getComments: vi.fn(), addComment: vi.fn() }))
-vi.mock('../../services/ideaService', () => ({ IdeaService: { getComments, addComment } }))
+const { getComments, addComment, updateComment, deleteComment } = vi.hoisted(() => ({ getComments: vi.fn(), addComment: vi.fn(), updateComment: vi.fn(), deleteComment: vi.fn() }))
+vi.mock('../../services/ideaService', () => ({ IdeaService: { getComments, addComment, updateComment, deleteComment } }))
 vi.mock('../../services/profileService', () => ({ ProfileService: { getProfile: vi.fn().mockResolvedValue({ name: 'Reviewer' }) } }))
 const comment = { id: 'c-1', ideaId: 'idea-1', userId: 'other', content: 'Documented customer impact', createdAt: '2026-09-01T00:00:00Z' }
 const view = (id = 'idea-1') => <MantineProvider><NominationComments key={id} ideaId={id} userId="me" /></MantineProvider>
@@ -63,4 +63,45 @@ describe('NominationComments', () => {
     await waitFor(() => expect(screen.queryByText(comment.content)).not.toBeInTheDocument())
     expect(screen.getByText('Second nominee comment')).toBeInTheDocument()
   })
+})
+
+it('edits the authors comment and preserves the draft if saving fails', async () => {
+  getComments.mockResolvedValue([{ ...comment, userId: 'me' }])
+  updateComment.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ ...comment, content: 'Updated' })
+  const user = userEvent.setup()
+  render(view())
+  await user.click(await screen.findByRole('button', { name: 'Edit', exact: true }))
+  const input = screen.getByRole('textbox', { name: 'Edit comment' })
+  await user.clear(input); await user.type(input, 'Updated')
+  await user.click(screen.getByRole('button', { name: 'Save', exact: true }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to save changes')
+  expect(input).toHaveValue('Updated')
+  getComments.mockResolvedValue([{ ...comment, userId: 'me', content: 'Updated' }])
+  await user.click(screen.getByRole('button', { name: 'Save', exact: true }))
+  expect(updateComment).toHaveBeenCalledWith('idea-1', 'c-1', 'Updated')
+  expect(await screen.findByText('Updated')).toBeInTheDocument()
+})
+
+it('confirms deletion and refreshes the discussion', async () => {
+  getComments.mockResolvedValue([{ ...comment, userId: 'me' }])
+  deleteComment.mockResolvedValue(undefined)
+  const user = userEvent.setup()
+  render(view())
+  await user.click(await screen.findByRole('button', { name: 'Delete', exact: true }))
+  expect(screen.getByText('Delete this comment?')).toBeInTheDocument()
+  getComments.mockResolvedValue([])
+  await user.click(screen.getByRole('button', { name: 'Confirm deletion' }))
+  expect(deleteComment).toHaveBeenCalledWith('idea-1', 'c-1')
+  expect(await screen.findByText('No comments yet.')).toBeInTheDocument()
+})
+
+it('hides mutations for other authors and allows administrators to moderate', async () => {
+  getComments.mockResolvedValue([comment])
+  const { rerender } = render(view())
+  await screen.findByText(comment.content)
+  expect(screen.queryByRole('button', { name: 'Edit', exact: true })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Delete', exact: true })).not.toBeInTheDocument()
+  rerender(<MantineProvider><NominationComments ideaId="idea-1" userId="me" isAdmin /></MantineProvider>)
+  expect(await screen.findByRole('button', { name: 'Delete', exact: true })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Edit', exact: true })).not.toBeInTheDocument()
 })

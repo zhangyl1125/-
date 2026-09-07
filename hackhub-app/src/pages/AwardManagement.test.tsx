@@ -28,6 +28,15 @@ describe('AwardManagement', () => {
     expect(screen.queryByRole('link', { name: 'Create award campaign' })).not.toBeInTheDocument()
   })
 
+  it('opens management from the award title without a separate settings button', async () => {
+    user.role = 'admin'
+    try {
+      show('/awards')
+      expect(await screen.findByRole('link', { name: 'Assigned award' })).toHaveAttribute('href', '/awards/award-1')
+      expect(screen.queryByText('Campaign settings')).not.toBeInTheDocument()
+    } finally { user.role = 'participant' }
+  })
+
   it('keeps committee assignment, rankings and department rules accessible to administrators', async () => {
     user.role = 'admin'
     try {
