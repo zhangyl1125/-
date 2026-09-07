@@ -57,6 +57,7 @@ describe('Header', () => {
     expect(screen.queryByText('参与者')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Alice' }))
     expect(await screen.findByText('参与者')).toBeInTheDocument()
+    expect(screen.getByText('个人资料')).toBeInTheDocument()
   })
 
   it('defaults to Chinese and toggles to English', () => {

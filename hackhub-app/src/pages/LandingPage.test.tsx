@@ -15,6 +15,18 @@ describe('LandingPage', () => {
     expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/login')
   })
 
+  it('links authenticated visitors back into the award overview', () => {
+    render(
+      <MemoryRouter>
+        <LandingPage authenticated />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: 'Discover' })).toHaveAttribute('href', '/overview')
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/overview')
+    expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/overview')
+  })
+
   it('shows the three award tracks', () => {
     const { container } = render(
       <MemoryRouter>

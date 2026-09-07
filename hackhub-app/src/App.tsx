@@ -32,9 +32,9 @@ function App() {
     }
   }, [initialized, initialize])
 
-  // The public landing page should paint immediately; session recovery continues in the background.
-  if (!initialized && location.pathname === '/') {
-    return <LandingPage />
+  // Keep the public home page available even when a previous session is restored.
+  if (location.pathname === '/') {
+    return <LandingPage authenticated={Boolean(user)} />
   }
 
   // Keep protected and authentication routes covered while the session is being resolved.
@@ -78,7 +78,7 @@ function App() {
 
         <AppShell.Main className="dp-app-main">
           <Routes>
-            <Route path="/" element={<DigitalPioneerOverview />} />
+            <Route path="/overview" element={<DigitalPioneerOverview />} />
             <Route path="/committee" element={<AwardManagement />} />
             <Route path="/awards" element={<AwardManagement />} />
             <Route path="/awards/:id" element={<AwardManagement />} />

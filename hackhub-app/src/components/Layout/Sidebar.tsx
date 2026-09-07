@@ -10,12 +10,11 @@ export function Sidebar({ horizontal = false, onNavigate }: { horizontal?: boole
   const { t, language } = useLanguage()
   const participant = user?.role === 'participant'
   const items = [
-    { label: t('sidebar.overview'), path: '/' },
+    { label: t('sidebar.overview'), path: '/overview' },
     { label: t('sidebar.nomination'), path: '/nominate' },
     ...(!participant ? [{ label: language === 'zh' ? '评选管理' : 'Award management', path: '/awards' }] : []),
     { label: t('sidebar.projectOverview'), path: '/projects' },
     ...(participant ? [{ label: language === 'zh' ? '组委会评分' : 'Committee scoring', path: '/committee' }] : []),
-    { label: t('sidebar.profile'), path: '/profile' },
     ...(user && (PermissionService.canManageUsers(user) || user.role === 'manager')
       ? [{ label: PermissionService.canManageUsers(user) ? t('sidebar.manageUsers') : t('sidebar.manageMembers'), path: '/admin/users' }] : []),
   ]

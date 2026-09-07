@@ -11,12 +11,6 @@ import { Link } from 'react-router-dom'
 import { AwardBrand } from '../components/Layout/AwardBrand'
 import './LandingPage.css'
 
-const entryPoints = [
-  { label: 'Discover', to: '/login?redirect=/' },
-  { label: 'Nominate', to: '/login?redirect=/nominate' },
-  { label: 'Vote', to: '/login?redirect=/projects' },
-] as const
-
 const tracks = [
   { code: 'V', name: 'VALUE', label: 'Customer value', icon: IconHeartHandshake },
   { code: 'S', name: 'SHIFT', label: 'Innovation breakthrough', icon: IconBulb },
@@ -26,10 +20,16 @@ const tracks = [
 const landingVideoSrc = '/media/award-landing-bg.mp4'
 const landingPosterSrc = '/media/award-landing-poster.webp'
 
-export function LandingPage() {
+export function LandingPage({ authenticated = false }: { authenticated?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const entryPoints = [
+    { label: 'Discover', to: authenticated ? '/overview' : '/login?redirect=/overview' },
+    { label: 'Nominate', to: authenticated ? '/nominate' : '/login?redirect=/nominate' },
+    { label: 'Vote', to: authenticated ? '/projects' : '/login?redirect=/projects' },
+  ] as const
+  const startPath = authenticated ? '/overview' : '/login'
 
   useEffect(() => {
     const video = videoRef.current
@@ -96,7 +96,7 @@ export function LandingPage() {
           ))}
         </nav>
 
-        <Link className="award-landing__sign-in" to="/login">
+        <Link className="award-landing__sign-in" to={startPath}>
           Sign in
           <IconArrowUpRight aria-hidden="true" size={15} stroke={1.8} />
         </Link>
@@ -159,7 +159,7 @@ export function LandingPage() {
         <Link
           className="award-landing__cta award-landing__reveal"
           style={{ '--delay': '470ms' } as CSSProperties}
-          to="/login"
+          to={startPath}
         >
           <span>Get Started</span>
         </Link>
