@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { Header } from './Header'
 import { LanguageProvider } from '../../contexts/LanguageContext'
 
@@ -13,14 +13,19 @@ vi.mock('../../store/authStore', () => ({
 import { useAuthStore } from '../../store/authStore'
 const mockUseAuthStore = useAuthStore as unknown as ReturnType<typeof vi.fn>
 
+function CurrentPath() {
+  return <output data-testid="current-path">{useLocation().pathname}</output>
+}
+
 function renderHeader(props?: { opened?: boolean; toggle?: () => void }) {
   const toggle = props?.toggle ?? vi.fn()
   const opened = props?.opened ?? false
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/overview']}>
       <MantineProvider>
         <LanguageProvider>
           <Header opened={opened} toggle={toggle} />
+          <CurrentPath />
         </LanguageProvider>
       </MantineProvider>
     </MemoryRouter>
@@ -80,15 +85,21 @@ describe('Header', () => {
     expect(menuTrigger).not.toBeNull()
   })
 
-  it('logout function is wired to the store', () => {
-    const logoutMock = vi.fn().mockResolvedValue(undefined)
+  it.each([false, true])('returns to the public home after logout, server failure: %s', async (fails) => {
+    const logoutMock = fails
+      ? vi.fn().mockRejectedValue(new Error('Server unavailable'))
+      : vi.fn().mockResolvedValue(undefined)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockUseAuthStore.mockReturnValue({
       user: { id: 'user-1', email: 'alice@test.com', name: 'Alice', role: 'participant', skills: [] },
       logout: logoutMock,
     })
     renderHeader()
-    // Verify the store's logout was connected (component renders without error)
-    expect(screen.getByText('Alice')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Alice' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
+    await waitFor(() => expect(screen.getByTestId('current-path')).toHaveTextContent(/^\/$/))
+    expect(logoutMock).toHaveBeenCalledOnce()
+    consoleError.mockRestore()
   })
 
   it('renders with no user gracefully', () => {

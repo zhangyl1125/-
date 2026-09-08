@@ -189,7 +189,7 @@ function IdeaJudgingCard({
                       </Group>
                       <Text size="sm" c="dimmed" mt={5}>{rubric.description}</Text>
                     </div>
-                    <Badge color={getScoreTone(numericScore)} variant="light" size="lg">
+                    <Badge key={String(score)} color={getScoreTone(numericScore)} variant="light" size="lg">
                       {score === '' ? <span>Not scored</span> : <><span>{score} · </span><span>{getScoreLabel(numericScore, rubric.key === 'impact')}</span></>}
                     </Badge>
                   </Group>
@@ -302,6 +302,7 @@ export function JudgingPanel(): ReactElement {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
+  const [confirmTemplate, setConfirmTemplate] = useState(false)
   const [submittingIdea, setSubmittingIdea] = useState<string | null>(null)
   const canManageJudging = user !== null && PermissionService.isManagerOrAbove(user)
 
@@ -331,6 +332,16 @@ export function JudgingPanel(): ReactElement {
     queryFn: () => JudgingService.getMyScores(hackathonId!),
     enabled: Boolean(hackathonId && isAssignedJudge),
     staleTime: 60 * 1000,
+  })
+
+  const templateMutation = useMutation({
+    mutationFn: () => VotingService.applyAwardTemplate(hackathonId!),
+    onSuccess: (configured) => {
+      queryClient.setQueryData(['voting-criteria', hackathonId], configured)
+      setConfirmTemplate(false)
+      notifications.show({ title: 'Evaluation form ready', message: 'Behavior Demonstration 70% and Business Impact 30% were added.', color: 'teal' })
+    },
+    onError: (error) => notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Unable to configure the evaluation form.', color: 'red' }),
   })
 
   const ownScores = (myScores ?? []).filter((score) => score.judgeId === user?.id)
@@ -458,7 +469,7 @@ export function JudgingPanel(): ReactElement {
               </Grid.Col>
             ))}
             <Grid.Col span={{ base: 12, sm: 2 }}>
-              <Badge color={criteriaReady ? 'teal' : 'orange'} variant="light">
+              <Badge key={criteriaReady ? 'ready' : 'pending'} color={criteriaReady ? 'teal' : 'orange'} variant="light">
                 {criteriaReady ? 'Ready' : 'Check setup'}
               </Badge>
             </Grid.Col>
@@ -472,7 +483,11 @@ export function JudgingPanel(): ReactElement {
         {!isLoading && !error && !criteriaReady ? (
           <Alert color="orange" icon={<IconAlertCircle size={18} />}>
             <Text>Configure exactly two criteria totaling 100% before committee scoring: Behavior Demonstration 70% and Business Impact 30%.</Text>
-            {canManageJudging && <Button mt="md" variant="light" onClick={() => navigate(`/awards/${hackathonId}`)}>Manage evaluation criteria</Button>}
+            {canManageJudging && <Group mt="md"><Button onClick={() => setConfirmTemplate(true)}>Apply 2026 DPA template</Button><Button variant="light" onClick={() => navigate(`/awards/${hackathonId}`)}>Manage evaluation criteria</Button></Group>}
+            {canManageJudging && confirmTemplate && <Stack mt="md" gap="sm">
+              <Text>Apply Behavior Demonstration 70% and Business Impact 30%? Existing criteria will be replaced only if no scores have been recorded.</Text>
+              <Group><Button loading={templateMutation.isPending} onClick={() => templateMutation.mutate()}>Confirm official criteria</Button><Button variant="default" onClick={() => setConfirmTemplate(false)}>Cancel</Button></Group>
+            </Stack>}
           </Alert>
         ) : null}
         {!isLoading && !error && criteriaReady && submittedIdeas.length === 0 ? (

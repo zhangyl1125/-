@@ -1,9 +1,11 @@
 import { AwardBrand } from '../components/Layout/AwardBrand'
+import { useState } from 'react'
 import {
   Paper,
   TextInput,
   PasswordInput,
   Button,
+  Checkbox,
   Title,
   Text,
   Anchor,
@@ -17,10 +19,21 @@ import {
 } from '@mantine/core'
 import { IconSun, IconMoon } from '@tabler/icons-react'
 import { useForm } from '@mantine/form'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { notifications } from '@mantine/notifications'
 import { useLanguage } from '../contexts/LanguageContext'
+import { loginDestination } from '../lib/loginDestination'
+
+const rememberedEmailKey = 'digital-award:remembered-email:v1'
+
+function readRememberedEmail(): string {
+  try {
+    return localStorage.getItem(rememberedEmailKey) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 interface LoginFormData {
   email: string
@@ -29,14 +42,16 @@ interface LoginFormData {
 
 export function Login() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const { login } = useAuthStore()
+  const location = useLocation()
+  const { login, loading } = useAuthStore()
+  const [rememberedEmail] = useState(readRememberedEmail)
+  const [rememberEmail, setRememberEmail] = useState(Boolean(rememberedEmail))
   const { colorScheme, toggleColorScheme } = useMantineColorScheme()
   const { language, toggleLanguage } = useLanguage()
 
   const form = useForm<LoginFormData>({
     initialValues: {
-      email: '',
+      email: rememberedEmail,
       password: '',
     },
     validate: {
@@ -48,16 +63,18 @@ export function Login() {
   const handleSubmit = async (values: LoginFormData) => {
     try {
       await login(values.email, values.password)
+      try {
+        if (rememberEmail) localStorage.setItem(rememberedEmailKey, values.email)
+        else localStorage.removeItem(rememberedEmailKey)
+      } catch {
+        // Browser storage may be disabled; it must not prevent sign-in.
+      }
       notifications.show({
         title: 'Welcome back!',
         message: 'Successfully logged in to Digital Award',
         color: 'green',
       })
-      const requestedPath = searchParams.get('redirect')
-      const destination = requestedPath?.startsWith('/') && !requestedPath.startsWith('//')
-        ? requestedPath
-        : '/'
-      navigate(destination)
+      navigate(loginDestination(location.search), { replace: true })
     } catch (error) {
       notifications.show({
         title: 'Login failed',
@@ -106,11 +123,14 @@ export function Login() {
           Sign in to the Digital Pioneer Award portal
         </Text>
 
-        <form onSubmit={form.onSubmit(handleSubmit)}>
+        <form onSubmit={form.onSubmit(handleSubmit)} autoComplete="on">
           <Stack>
             <TextInput
               label="Email"
               placeholder="your@email.com"
+              name="username"
+              autoComplete="username"
+              inputMode="email"
               required
               {...form.getInputProps('email')}
             />
@@ -118,11 +138,30 @@ export function Login() {
             <PasswordInput
               label="Password"
               placeholder="Your password"
+              name="password"
+              autoComplete="current-password"
               required
               {...form.getInputProps('password')}
             />
 
-            <Button type="submit" fullWidth mt="xl" size="md">
+            <Checkbox
+              label={language === 'zh' ? '记住邮箱' : 'Remember email'}
+              checked={rememberEmail}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked
+                setRememberEmail(checked)
+                if (!checked) {
+                  try { localStorage.removeItem(rememberedEmailKey) } catch { /* Storage is optional. */ }
+                }
+              }}
+            />
+            <Text size="xs" c="dimmed">
+              {language === 'zh'
+                ? '可使用浏览器密码管理器保存密码，下次登录时自动填充。'
+                : 'Use your browser’s password manager to save your password and autofill it next time.'}
+            </Text>
+
+            <Button type="submit" fullWidth mt="xl" size="md" loading={loading}>
               Sign in
             </Button>
           </Stack>

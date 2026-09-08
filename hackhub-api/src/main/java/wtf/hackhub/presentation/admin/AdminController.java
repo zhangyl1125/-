@@ -36,6 +36,7 @@ import java.util.UUID;
 @RequestMapping("/api/v1/admin")
 public class AdminController {
 
+	private final wtf.hackhub.application.idea.NomineeDirectory nomineeDirectory;
 	private final ListUsersUseCase listUsersUseCase;
 	private final UpdateUserRoleUseCase updateUserRoleUseCase;
 	private final AdminCreateUserUseCase adminCreateUserUseCase;
@@ -47,7 +48,8 @@ public class AdminController {
 	public AdminController(ListUsersUseCase listUsersUseCase, UpdateUserRoleUseCase updateUserRoleUseCase,
 			AdminCreateUserUseCase adminCreateUserUseCase, DeleteUserUseCase deleteUserUseCase,
 			OrganizationRepository organizationRepository, OrganizationMemberRepository memberRepository,
-			HackathonRepository hackathonRepository) {
+			HackathonRepository hackathonRepository, wtf.hackhub.application.idea.NomineeDirectory nomineeDirectory) {
+		this.nomineeDirectory = nomineeDirectory;
 		this.listUsersUseCase = listUsersUseCase;
 		this.updateUserRoleUseCase = updateUserRoleUseCase;
 		this.adminCreateUserUseCase = adminCreateUserUseCase;
@@ -62,7 +64,7 @@ public class AdminController {
 			@ApiResponse(responseCode = "401", description = "Not authenticated")})
 	@GetMapping("/users")
 	public Page<UserSummary> listUsers(Pageable pageable) {
-		return listUsersUseCase.execute(pageable).map(UserSummary::from);
+		return listUsersUseCase.execute(pageable).map(this::toUserSummary);
 	}
 
 	@Operation(summary = "Create a new platform user (admin or manager)")
@@ -82,7 +84,7 @@ public class AdminController {
 		Profile.Role role = req.role() != null ? req.role() : Profile.Role.PARTICIPANT;
 		Profile created = adminCreateUserUseCase.execute(req.email(), req.name(), req.password(), role,
 				req.organizationId(), callerId, callerIsManager);
-		return ResponseEntity.status(HttpStatus.CREATED).body(UserSummary.from(created));
+		return ResponseEntity.status(HttpStatus.CREATED).body(toUserSummary(created));
 	}
 
 	@Operation(summary = "Update a user's platform role")
@@ -93,7 +95,7 @@ public class AdminController {
 	@PatchMapping("/users/{id}/role")
 	public UserSummary updateRole(@PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
 		Profile updated = updateUserRoleUseCase.execute(id, Profile.Role.fromDbValue(request.role()));
-		return UserSummary.from(updated);
+		return toUserSummary(updated);
 	}
 
 	@Operation(summary = "Delete a platform user")
@@ -152,10 +154,18 @@ public class AdminController {
 
 	// ── DTOs ──────────────────────────────────────────────────────────────────
 
-	public record UserSummary(UUID id, String email, String name, String role, Instant createdAt) {
-		static UserSummary from(Profile p) {
-			return new UserSummary(p.getId(), p.getEmail(), p.getName(), p.getRole().toDbValue(), p.getCreatedAt());
-		}
+	private UserSummary toUserSummary(Profile p) {
+		String orgCode = nomineeDirectory.resolveParticipant(p)
+				.map(wtf.hackhub.domain.VotingParticipant::getOrganizationalUnit).orElse(null);
+		String department = orgCode == null
+				? null
+				: wtf.hackhub.application.idea.NomineeDirectory.departmentCode(orgCode);
+		return new UserSummary(p.getId(), p.getEmail(), p.getName(), p.getRole().toDbValue(), p.getCreatedAt(), orgCode,
+				department);
+	}
+
+	public record UserSummary(UUID id, String email, String name, String role, Instant createdAt, String orgCode,
+			String department) {
 	}
 
 	public record OrgSummary(UUID id, String name, String slug, String description, String websiteUrl, UUID createdBy,

@@ -379,81 +379,6 @@
   transform: translateY(-2px) scale(1.015);
 }
 
-.award-landing__tracks {
-  display: grid;
-  width: min(100%, 860px);
-  flex: 0 0 auto;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(18px, 4vw, 54px);
-}
-
-.award-landing__track {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  transition: transform 420ms var(--landing-spring);
-}
-
-.award-landing__track-code {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 50%;
-  color: #fff;
-  font-family: var(--landing-editorial);
-  font-size: 12px;
-  font-weight: 700;
-  text-shadow: 0 0 16px rgba(255, 255, 255, 0.22);
-  transition:
-    border-color 320ms ease,
-    box-shadow 420ms var(--landing-spring),
-    transform 420ms var(--landing-spring);
-}
-
-.award-landing__track-copy {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  text-align: left;
-}
-
-.award-landing__track-copy strong {
-  color: #fff;
-  font-family: var(--landing-editorial);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  line-height: 1.05;
-  text-shadow: 0 1px 16px rgba(255, 255, 255, 0.16);
-}
-
-.award-landing__track-copy span {
-  overflow: hidden;
-  color: rgba(238, 238, 240, 0.74);
-  font-family: var(--landing-sans);
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.005em;
-  line-height: 1.25;
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.award-landing__track:hover {
-  transform: translateY(-2px);
-}
-
-.award-landing__track:hover .award-landing__track-code {
-  border-color: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.12);
-  transform: scale(1.05);
-}
-
 .award-landing__reveal {
   opacity: 0;
   filter: blur(5px);
@@ -599,15 +524,6 @@
     letter-spacing: -0.07em;
   }
 
-  .award-landing__tracks {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    width: min(100%, 340px);
-  }
-
-  .award-landing__track {
-    padding-block: 2px;
-  }
 }
 
 @media (max-width: 420px) {

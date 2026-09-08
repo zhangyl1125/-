@@ -11,15 +11,13 @@ vi.mock('../contexts/LanguageContext', () => ({ useLanguage: () => ({ language: 
 
 const mocks = vi.hoisted(() => ({
   user: { id: 'judge-1', role: 'participant' },
+  getCriteria: vi.fn(), applyAwardTemplate: vi.fn(),
   deleteEvaluation: vi.fn(), getJudges: vi.fn(), getMyScores: vi.fn(), submitEvaluation: vi.fn(), notify: vi.fn(),
 }))
 vi.mock('../store/authStore', () => ({ useAuthStore: () => ({ user: mocks.user }) }))
 vi.mock('@mantine/notifications', () => ({ notifications: { show: mocks.notify } }))
 vi.mock('../services/judgingService', () => ({ JudgingService: mocks }))
-vi.mock('../services/votingService', () => ({ VotingService: { getCriteria: async () => [
-  { id: 'behavior', name: 'Behavior Demonstration', weight: 70 },
-  { id: 'impact', name: 'Business Impact', weight: 30 },
-] } }))
+vi.mock('../services/votingService', () => ({ VotingService: { getCriteria: mocks.getCriteria, applyAwardTemplate: mocks.applyAwardTemplate } }))
 vi.mock('../services/ideaService', () => ({ IdeaService: { getIdeas: async () => ({ content: [
   { id: 'case-1', title: 'Customer value case', description: 'Measured impact', category: 'Customer Values', tags: [], status: 'submitted' },
 ], totalPages: 1 }) } }))
@@ -33,6 +31,7 @@ function show() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.getCriteria.mockResolvedValue([{ id: 'behavior', name: 'Behavior Demonstration', weight: 70 }, { id: 'impact', name: 'Business Impact', weight: 30 }])
   mocks.user.role = 'participant'
   mocks.getJudges.mockResolvedValue([{ userId: 'judge-1' }])
   mocks.getMyScores.mockResolvedValue([])
@@ -90,4 +89,29 @@ it('deletes only the current judges complete evaluation and refreshes the form',
   await user.click(screen.getByRole('button', { name: 'Confirm deletion' }))
   expect(mocks.deleteEvaluation).toHaveBeenCalledWith('award-1', 'case-1')
   expect(await screen.findByRole('button', { name: 'Submit rating' })).toBeDisabled()
+})
+
+it('repairs an unscored invalid rubric from the blocked scoring screen', async () => {
+  mocks.user.role = 'admin'
+  mocks.getCriteria.mockResolvedValue([{ id: 'old', name: '111111', weight: 100 }])
+  mocks.applyAwardTemplate.mockResolvedValue([{ id: 'behavior', name: 'Behavior Demonstration', weight: 70 }, { id: 'impact', name: 'Business Impact', weight: 30 }])
+  show()
+  await userEvent.click(await screen.findByRole('button', { name: 'Apply 2026 DPA template' }))
+  expect(mocks.applyAwardTemplate).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm official criteria' }))
+  await waitFor(() => expect(mocks.applyAwardTemplate).toHaveBeenCalledWith('award-1'))
+  expect(await screen.findByText('Score the evidence')).toBeInTheDocument()
+  expect(screen.queryByText('Check setup')).not.toBeInTheDocument()
+})
+
+it('keeps the invalid setup visible when existing scores prevent replacement', async () => {
+  mocks.user.role = 'admin'
+  mocks.getCriteria.mockResolvedValue([{ id: 'old', name: 'Custom', weight: 100 }])
+  mocks.applyAwardTemplate.mockRejectedValue(new Error('Existing scores must be reviewed before replacing evaluation criteria.'))
+  show()
+  await userEvent.click(await screen.findByRole('button', { name: 'Apply 2026 DPA template' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm official criteria' }))
+  await waitFor(() => expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({color:'red'})))
+  expect(screen.getByText('Check setup')).toBeInTheDocument()
+  expect(screen.queryByText('Score the evidence')).not.toBeInTheDocument()
 })

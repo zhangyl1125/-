@@ -21,6 +21,30 @@ public class NomineeDirectory {
 		profileRepository = profiles;
 		participantRepository = participants;
 	}
+	public String enrichLegacy(String attachments, UUID creatorId) {
+		try {
+			var mapper = new ObjectMapper();
+			var items = attachments == null || attachments.isBlank()
+					? mapper.createArrayNode()
+					: mapper.readTree(attachments);
+			if (!items.isArray())
+				throw new IllegalArgumentException("Nomination attachments must be an array");
+			boolean hasNomination = false;
+			for (var item : items) {
+				if (!"nomination".equals(item.path("type").asText()))
+					continue;
+				hasNomination = true;
+				if (!item.hasNonNull("nomineeUserId"))
+					((ObjectNode) item).put("nomineeUserId", creatorId.toString());
+			}
+			if (!hasNomination)
+				((com.fasterxml.jackson.databind.node.ArrayNode) items).addObject().put("type", "nomination")
+						.put("url", "").put("nomineeUserId", creatorId.toString());
+			return enrich(items.toString(), false);
+		} catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+			throw new IllegalArgumentException("Invalid nomination attachments");
+		}
+	}
 	public String enrich(String attachments, boolean required) {
 		if (attachments == null || attachments.isBlank())
 			return attachments;
@@ -51,6 +75,10 @@ public class NomineeDirectory {
 		}
 	}
 	public Optional<VotingParticipant> resolveParticipant(Profile profile) {
+		if (profile.getOrgCode() != null && !profile.getOrgCode().isBlank()) {
+			return Optional.of(new VotingParticipant("profile:" + profile.getId(), profile.getOrgCode().trim(),
+					profile.getName(), normalizeIdentity(profile.getName())));
+		}
 		String emailLocalPart = profile.getEmail().split("@", 2)[0].replaceFirst("(?i)^fixed-term[._-]*", "");
 		Optional<VotingParticipant> byEmail = uniqueParticipant(normalizeIdentity(emailLocalPart));
 		if (byEmail.isPresent())

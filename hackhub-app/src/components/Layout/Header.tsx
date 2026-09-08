@@ -40,9 +40,10 @@ export function Header({ opened, toggle }: HeaderProps) {
   const handleLogout = async () => {
     try {
       await logout()
-      navigate('/login')
     } catch (error) {
       console.error('Logout error:', error)
+    } finally {
+      navigate('/', { replace: true })
     }
   }
 

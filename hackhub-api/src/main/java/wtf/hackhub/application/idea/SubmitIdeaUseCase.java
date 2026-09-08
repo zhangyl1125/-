@@ -105,7 +105,9 @@ public class SubmitIdeaUseCase {
 					category);
 			proposed.update(title, description, category, tags, idea.getStatus(), repositoryUrl, demoUrl,
 					projectAttachments);
-			if (!idea.getCategory().equalsIgnoreCase(category)
+			if (!wtf.hackhub.domain.AwardTrack.normalize(idea.getCategory(), idea.getTags())
+					.equals(wtf.hackhub.domain.AwardTrack.normalize(category, tags))
+					|| !idea.getCategory().equalsIgnoreCase(category)
 					|| !VoteIdeaUseCase.nomineeId(idea).equals(VoteIdeaUseCase.nomineeId(proposed))) {
 				throw new IllegalArgumentException(
 						"Track and nominee cannot change after voting or committee scoring has started");

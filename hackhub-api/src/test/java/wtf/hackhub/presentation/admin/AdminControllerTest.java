@@ -49,6 +49,8 @@ class AdminControllerTest {
 	MockMvc mvc;
 
 	@MockBean
+	wtf.hackhub.application.idea.NomineeDirectory nomineeDirectory;
+	@MockBean
 	AdminCreateUserUseCase adminCreateUserUseCase;
 	@MockBean
 	ListUsersUseCase listUsersUseCase;

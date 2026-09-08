@@ -31,6 +31,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { VotingService } from '../services/votingService'
 import type { VotingCriteria } from '../services/votingService'
+import { officialCriteria } from '../utils/committeeScoring'
 import { DIGITAL_PIONEER_RUBRIC } from '../config/digitalPioneer'
 
 interface VotingCriteriaManagerProps {
@@ -47,7 +48,7 @@ interface CriteriaForm {
 
 export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteriaManagerProps) {
   const [criteria, setCriteria] = useState<VotingCriteria[]>([])
-  const [templateNeedsReview, setTemplateNeedsReview] = useState(false)
+  const [confirmTemplate, setConfirmTemplate] = useState(false)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editingCriteria, setEditingCriteria] = useState<VotingCriteria | null>(null)
@@ -210,14 +211,8 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
     if (applyingTemplate) return
     setApplyingTemplate(true)
     try {
-      for (const [index, rubric] of DIGITAL_PIONEER_RUBRIC.entries()) {
-        await VotingService.createCriteria(hackathonId, {
-          name: rubric.name,
-          description: rubric.description,
-          weight: rubric.weight,
-          displayOrder: index + 1,
-        })
-      }
+      await VotingService.applyAwardTemplate(hackathonId)
+      setConfirmTemplate(false)
       await loadCriteria()
       notifications.show({
         title: 'Evaluation form ready',
@@ -225,11 +220,10 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
         color: 'teal',
       })
     } catch (error) {
-      setTemplateNeedsReview(true)
       console.error('Failed to apply Digital Pioneer template:', error)
       notifications.show({
         title: 'Template not applied',
-        message: 'Some criteria may have been saved. Review the refreshed list before adding any missing criterion.',
+        message: error instanceof Error ? error.message : 'Unable to configure the evaluation form.',
         color: 'red',
       })
       await loadCriteria()
@@ -262,14 +256,13 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
             </div>
             {isManager && (
               <Group gap="xs">
-                {criteria.length === 0 ? (
+                {!officialCriteria(criteria) ? (
                   <Button
                     variant="light"
                     color="cyan"
                     leftSection={<IconWand size={16} />}
-                    disabled={templateNeedsReview}
                     loading={applyingTemplate}
-                    onClick={() => void applyDigitalPioneerTemplate()}
+                    onClick={() => setConfirmTemplate(true)}
                   >
                     Apply 2026 DPA template
                   </Button>
@@ -291,12 +284,12 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
               color={isWeightValid ? 'green' : totalWeight > 100 ? 'red' : 'yellow'}
               style={{ flex: 1 }}
             />
-            {isWeightValid ? (
-              <Badge color="green" variant="light" leftSection={<IconCheck size={12} />}>
+            {isWeightValid && officialCriteria(criteria) ? (
+              <Badge key="official" color="green" variant="light" leftSection={<IconCheck size={12} />}>
                 Valid
               </Badge>
             ) : (
-              <Badge color="red" variant="light" leftSection={<IconAlertCircle size={12} />}>
+              <Badge key="invalid" color="red" variant="light" leftSection={<IconAlertCircle size={12} />}>
                 Invalid
               </Badge>
             )}
@@ -309,9 +302,12 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
             </Alert>
           )}
 
+          {!officialCriteria(criteria) && criteria.length > 0 && <Alert color="orange">
+            Configure exactly two criteria totaling 100% before committee scoring: Behavior Demonstration 70% and Business Impact 30%.
+          </Alert>}
           {criteria.length === 0 ? (
             <Alert color="blue">
-              No voting criteria defined yet. {isManager ? 'Add some criteria to get started.' : 'The hackathon manager will set up voting criteria.'}
+              No voting criteria defined yet. {isManager ? 'Add some criteria to get started.' : 'The award manager will set up evaluation criteria.'}
             </Alert>
           ) : (
             <Table striped withTableBorder>
@@ -386,6 +382,10 @@ export function VotingCriteriaManager({ hackathonId, isManager }: VotingCriteria
             </Table>
           )}
 
+          {confirmTemplate && <Alert color="orange">
+            <Text>Apply Behavior Demonstration 70% and Business Impact 30%? Existing criteria will be replaced only if no scores have been recorded.</Text>
+            <Group mt="sm"><Button loading={applyingTemplate} onClick={() => void applyDigitalPioneerTemplate()}>Confirm official criteria</Button><Button variant="default" onClick={() => setConfirmTemplate(false)}>Cancel</Button></Group>
+          </Alert>}
           {criteria.length > 0 && (
             <>
               <Divider />

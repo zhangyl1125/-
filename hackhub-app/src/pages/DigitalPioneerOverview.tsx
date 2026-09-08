@@ -98,7 +98,7 @@ export function DigitalPioneerOverview(): ReactElement {
 
         <div className="dp-track-grid">
           {DIGITAL_PIONEER_TRACKS.map((track) => (
-            <article className="dp-track" data-code={track.shorthand} key={track.value}>
+            <article className="dp-track" key={track.value}>
               <h3 className="dp-track-title">{language === 'zh' ? track.labelZh : track.label}</h3>
               <Text className="dp-track-intro" mt="md">{track.description}</Text>
               <ul className="dp-standard-list">

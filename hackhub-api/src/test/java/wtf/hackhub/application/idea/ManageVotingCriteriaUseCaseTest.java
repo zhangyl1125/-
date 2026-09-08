@@ -21,6 +21,8 @@ class ManageVotingCriteriaUseCaseTest {
 
 	@Mock
 	VotingCriteriaRepository criteriaRepository;
+	@Mock
+	org.springframework.jdbc.core.JdbcTemplate jdbc;
 	@InjectMocks
 	ManageVotingCriteriaUseCase useCase;
 

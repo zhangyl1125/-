@@ -13,8 +13,11 @@ import java.util.UUID;
 public class ManageVotingCriteriaUseCase {
 
 	private final VotingCriteriaRepository criteriaRepository;
+	private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-	public ManageVotingCriteriaUseCase(VotingCriteriaRepository criteriaRepository) {
+	public ManageVotingCriteriaUseCase(VotingCriteriaRepository criteriaRepository,
+			org.springframework.jdbc.core.JdbcTemplate jdbc) {
+		this.jdbc = jdbc;
 		this.criteriaRepository = criteriaRepository;
 	}
 
@@ -26,6 +29,7 @@ public class ManageVotingCriteriaUseCase {
 	@Transactional
 	@PreAuthorize("hasRole('ADMIN') or @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication)")
 	public VotingCriteria create(UUID hackathonId, String name, String description, int weight, int displayOrder) {
+		lockCampaign(hackathonId);
 		validateWeight(hackathonId, weight, null);
 		return criteriaRepository.save(new VotingCriteria(hackathonId, name, description, weight, displayOrder));
 	}
@@ -33,7 +37,52 @@ public class ManageVotingCriteriaUseCase {
 	@Transactional
 	@PreAuthorize("hasRole('ADMIN') or @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication)")
 	public void delete(UUID hackathonId, UUID criteriaId) {
+		lockCampaign(hackathonId);
 		criteriaRepository.deleteById(criteriaId);
+	}
+
+	private void lockCampaign(UUID id) {
+		jdbc.query("SELECT id FROM hackathons WHERE id=? FOR UPDATE", rs -> {
+		}, id);
+	}
+
+	@Transactional
+	@PreAuthorize("hasRole('ADMIN') or (hasRole('MANAGER') and @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication))")
+	public List<VotingCriteria> applyAwardTemplate(UUID hackathonId) {
+		lockCampaign(hackathonId);
+		if (jdbc.queryForObject("SELECT count(*) FROM hackathons WHERE id=?", Integer.class, hackathonId) == 0)
+			throw new org.springframework.web.server.ResponseStatusException(
+					org.springframework.http.HttpStatus.NOT_FOUND);
+		// Row locks also serialize score inserts referencing the old criteria through
+		// their FK.
+		jdbc.query("SELECT id FROM voting_criteria WHERE hackathon_id=? ORDER BY id FOR UPDATE", rs -> {
+		}, hackathonId);
+		var current = criteriaRepository.findAllByHackathonIdOrderByDisplayOrder(hackathonId);
+		boolean official = current.size() == 2
+				&& current.stream()
+						.anyMatch(c -> c.getName().toLowerCase(java.util.Locale.ROOT).matches(".*behaviou?r.*")
+								&& c.getWeight() == 70)
+				&& current.stream()
+						.anyMatch(c -> c.getName().toLowerCase(java.util.Locale.ROOT).matches(".*(business|impact).*")
+								&& c.getWeight() == 30);
+		if (!official) {
+			int scoreCount = jdbc.queryForObject(
+					"SELECT (SELECT count(*) FROM judge_scores WHERE hackathon_id=?) + (SELECT count(*) FROM idea_scores s JOIN ideas i ON i.id=s.idea_id WHERE i.hackathon_id=?)",
+					Integer.class, hackathonId, hackathonId);
+			if (scoreCount > 0)
+				throw new org.springframework.web.server.ResponseStatusException(
+						org.springframework.http.HttpStatus.CONFLICT,
+						"Existing scores must be reviewed before replacing evaluation criteria.");
+			criteriaRepository.deleteAll(current);
+			criteriaRepository.flush();
+			current = criteriaRepository.saveAll(List.of(
+					new VotingCriteria(hackathonId, "Behavior Demonstration",
+							"Track-specific behavior demonstrated by the nominee", 70, 0),
+					new VotingCriteria(hackathonId, "Business Impact", "Measured customer or business outcomes", 30,
+							1)));
+		}
+		jdbc.update("UPDATE hackathons SET judging_mode='panel', panel_weight=100 WHERE id=?", hackathonId);
+		return current;
 	}
 
 	/**

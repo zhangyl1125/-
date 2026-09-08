@@ -96,31 +96,21 @@ interface ProjectFilters {
 interface ProjectUploadForm {
   hackathonId: string
   nomineeUserId: string
-  nomineePosition: string
-  nominatingHead: string
-  title: string
   executiveSummary: string
   achievementImpact: string
   cultureDemonstration: string
   category: string
   technologies: string
-  repositoryUrl: string
-  demoUrl: string
 }
 
 const emptyUploadForm = (): ProjectUploadForm => ({
   hackathonId: '',
   nomineeUserId: '',
-  nomineePosition: '',
-  nominatingHead: '',
-  title: '',
   executiveSummary: '',
   achievementImpact: '',
   cultureDemonstration: '',
   category: '',
   technologies: '',
-  repositoryUrl: '',
-  demoUrl: '',
 })
 
 export function ProjectShowcase({ nominationMode = false }: { nominationMode?: boolean }) {
@@ -255,7 +245,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
   const handleProjectUpload = async () => {
     if (!user || uploading) return
-    if (!uploadForm.hackathonId || !uploadForm.title.trim() || !uploadForm.executiveSummary.trim()
+    if (!uploadForm.hackathonId || !uploadForm.executiveSummary.trim()
       || !uploadForm.achievementImpact.trim() || !uploadForm.cultureDemonstration.trim()
       || !uploadForm.category.trim() || !projectImage) {
       notifications.show({
@@ -276,8 +266,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         .filter(Boolean)
       const description = [
         `Executive Summary\n${uploadForm.executiveSummary.trim()}`,
-        `Core Achievement & Business Impact\n${uploadForm.achievementImpact.trim()}`,
-        `High-Performance Culture Demonstration\n${uploadForm.cultureDemonstration.trim()}`,
+        `Details of Core Achievement and Business Impact (Including Financial Figures)\n${uploadForm.achievementImpact.trim()}`,
+        `How You Demonstrate Bosch China Culture (Especially in Your Applied Category)\n${uploadForm.cultureDemonstration.trim()}`,
       ].join('\n\n')
       const personalTeamName = `${user?.name ?? 'Digital Pioneer'} nomination`
       // Ideas still accept a teamId in the existing API. For this individual award,
@@ -295,22 +285,18 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         `projects/${team.id}`
       )
       await IdeaService.createIdea({
-        title: uploadForm.title.trim(),
+        title: nomineeName,
         description,
         hackathonId: uploadForm.hackathonId,
         teamId: team.id,
         category: uploadForm.category.trim(),
         tags: technologies,
         status: 'submitted',
-        repositoryUrl: uploadForm.repositoryUrl.trim() || null,
-        demoUrl: uploadForm.demoUrl.trim() || null,
         projectAttachments: [{
           type: 'nomination',
           url: '',
           name: nomineeName,
           nomineeUserId,
-          nomineePosition: uploadForm.nomineePosition.trim(),
-          nominatingHead: uploadForm.nominatingHead.trim(),
         }, {
           type: 'screenshot',
           url: uploadedImage.url,
@@ -529,7 +515,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   </Group>
                   <div className="dp-fieldset" style={{ borderTop: 0, paddingTop: 0 }}>
                     <Grid gutter="md">
-                      <Grid.Col span={12}>
+                      <Grid.Col span={{ base: 12, sm: 6 }}>
                         {user.role === 'participant' ? (
                           <TextInput label="Nominee name" value={user.name} readOnly />
                         ) : (
@@ -545,25 +531,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                         {nomineeLoadError && <Text size="sm" c="red" role="alert">Unable to load associates. Refresh to retry; self-nomination is still available.</Text>}
                       </Grid.Col>
                       <Grid.Col span={{ base: 12, sm: 6 }}>
-                        <TextInput label="Position" value={uploadForm.nomineePosition}
-                          onChange={(event) => setUploadForm((current) => ({ ...current, nomineePosition: event.target.value }))} />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, sm: 6 }}>
-                        <TextInput label="Nominating HoD" value={uploadForm.nominatingHead}
-                          onChange={(event) => setUploadForm((current) => ({ ...current, nominatingHead: event.target.value }))} />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, sm: 6 }}>
-                        <TextInput
-                          label="Contribution title"
-                          required
-                          placeholder="e.g. Predictive maintenance rollout"
-                          value={uploadForm.title}
-                          onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
-                        />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, sm: 6 }}>
                         <FileInput
-                          label="Nominee photo"
+                          label="Photo"
                           required
                           accept="image/jpeg,image/png,image/webp"
                           leftSection={<IconPhoto size={16} />}
@@ -572,6 +541,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                           clearable
                         />
                       </Grid.Col>
+                      <Grid.Col span={12}>
+                        <TextInput label="Application category" value={selectedNominationTrack.label} readOnly />
+                      </Grid.Col>
                     </Grid>
                   </div>
 
@@ -579,11 +551,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">01</span><span>Executive summary</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">01</span><span>Executive summary (the elevator pitch)</span></>}
                           required
                           minRows={4}
                           maxLength={1200}
-                          placeholder="Summarize the contribution in 3–5 sentences."
+                          placeholder="In 3–5 sentences, summarize your key contributions over the past year and explain why you represent the spirit of a Digital Pioneer."
                           value={uploadForm.executiveSummary}
                           onChange={(event) => setUploadForm((current) => ({ ...current, executiveSummary: event.target.value }))}
                         />
@@ -595,11 +567,10 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Achievements & impact</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Details of core achievement and business impact (including financial figures)</span></>}
                           required
                           minRows={4}
                           maxLength={2400}
-                          placeholder="Include measurable results, financial figures, currency and measurement period."
                           value={uploadForm.achievementImpact}
                           onChange={(event) => setUploadForm((current) => ({ ...current, achievementImpact: event.target.value }))}
                         />
@@ -611,11 +582,10 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">03</span><span>Culture demonstration</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">03</span><span>How you demonstrate Bosch China culture (especially in your applied category)?</span></>}
                           required
                           minRows={4}
                           maxLength={2000}
-                          placeholder="Describe how your actions demonstrate High-Performance Culture and meet the selected award criteria."
                           value={uploadForm.cultureDemonstration}
                           onChange={(event) => setUploadForm((current) => ({ ...current, cultureDemonstration: event.target.value }))}
                         />
@@ -627,25 +597,10 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <TextInput
-                          label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags</span></>}
-                          placeholder="AI, quality, customer experience"
+                          label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags you want to add</span></>}
                           value={uploadForm.technologies}
                           onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
                         />
-                        <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md">
-                          <TextInput
-                            label="Supporting evidence URL"
-                            placeholder="https://..."
-                            value={uploadForm.repositoryUrl}
-                            onChange={(event) => setUploadForm((current) => ({ ...current, repositoryUrl: event.target.value }))}
-                          />
-                          <TextInput
-                            label="Additional evidence URL"
-                            placeholder="https://..."
-                            value={uploadForm.demoUrl}
-                            onChange={(event) => setUploadForm((current) => ({ ...current, demoUrl: event.target.value }))}
-                          />
-                        </SimpleGrid>
                       </div>
                     </div>
                   </div>

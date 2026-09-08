@@ -32,6 +32,10 @@ public class Profile {
 	@Column(columnDefinition = "text[]")
 	private List<String> skills = List.of();
 
+	// Award department verified from the roster or an explicit account assignment.
+	@Column(name = "org_code")
+	private String orgCode;
+
 	@Column(name = "organization_id")
 	private UUID organizationId;
 
@@ -101,6 +105,9 @@ public class Profile {
 	}
 	public List<String> getSkills() {
 		return skills;
+	}
+	public String getOrgCode() {
+		return orgCode;
 	}
 	public UUID getOrganizationId() {
 		return organizationId;

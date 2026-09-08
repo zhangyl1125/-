@@ -404,6 +404,45 @@
   width: min(100%, 260px);
 }
 
+.dp-nomination-mark {
+  width: min(100%, 300px);
+  margin-inline: auto;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dp-nomination-mark:hover {
+  transform: translateY(-3px) rotate(-1deg);
+}
+
+.dp-nomination-mark svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.dp-nomination-mark__orbit {
+  stroke: rgb(138 92 142 / 22%);
+  stroke-dasharray: 3 8;
+  stroke-linecap: round;
+}
+
+.dp-nomination-mark__monogram {
+  fill: var(--dp-ink);
+  font-family: var(--dp-display);
+  font-size: 64px;
+  font-weight: 760;
+  letter-spacing: -0.13em;
+}
+
+.dp-nomination-mark__year {
+  fill: var(--dp-orchid);
+  font-family: var(--dp-utility);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.24em;
+}
+
 .dp-section {
   padding: clamp(76px, 9vw, 120px) 0 0;
 }
@@ -453,18 +492,6 @@
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 260ms ease;
-}
-
-.dp-track::after {
-  position: absolute;
-  right: 24px;
-  bottom: 18px;
-  color: rgb(29 29 31 / 5%);
-  content: attr(data-code);
-  font-family: var(--dp-display);
-  font-size: clamp(3rem, 5vw, 5rem);
-  font-weight: 750;
-  letter-spacing: -0.07em;
 }
 
 .dp-track:hover {
@@ -522,7 +549,7 @@
 .dp-standard-list {
   position: relative;
   z-index: 1;
-  margin: 22px 0 62px;
+  margin: 22px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -703,8 +730,8 @@
   min-height: 340px;
 }
 
-.dp-nomination-hero .dp-award-lens {
-  max-width: 230px;
+.dp-nomination-hero .dp-nomination-mark {
+  max-width: 300px;
 }
 
 .dp-nomination-flow {
@@ -1080,6 +1107,7 @@
   }
 
   .dp-award-lens__disc,
+  .dp-nomination-mark,
   .dp-track,
   .dp-project-card,
   .dp-primary-button,
@@ -1117,12 +1145,13 @@
 
 .dp-nomination-question .mantine-InputWrapper-label {
   display: inline-flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
+  width: 100%;
   margin-bottom: 8px;
   font-weight: 650;
   line-height: 1.5;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .dp-nomination-question .mantine-InputWrapper-required {

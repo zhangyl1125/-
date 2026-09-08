@@ -49,17 +49,20 @@
 .dp-award-brand--inverse { color: #fff; }
 .dp-award-brand--inverse .dp-award-brand__logo { filter: brightness(0) invert(1); }
 .dp-award-brand--inverse .dp-award-brand__divider { background: rgba(255, 255, 255, 0.55); }
-.award-landing .award-landing__header { width: min(100%, 960px); }
+.award-landing .award-landing__header { width: 100%; justify-content: space-between; }
 
-/* Keep the reversed lockup readable as the landing video changes behind it. */
+/* The landing lockup sits directly on the video, without a background capsule. */
 .award-landing .dp-award-brand--inverse {
-  padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(12, 24, 20, 0.76);
-  backdrop-filter: blur(12px);
+  padding: 0;
+  background: transparent;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 45%);
 }
 
-@media (max-width: 47.99em) {
-  .award-landing .dp-award-brand--inverse { padding: 10px 12px; }
+@media (min-width: 70em) {
+  .award-landing .award-landing__header {
+    display: grid;
+    grid-template-columns: 1fr minmax(280px, 460px) 1fr;
+  }
+  .award-landing .award-landing__nav { width: 100%; }
+  .award-landing .award-landing__sign-in { justify-self: start; }
 }

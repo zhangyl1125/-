@@ -46,4 +46,13 @@ class NomineeDirectoryTest {
 						new VotingParticipant("2", "BD/BA-AP", "Alice", "alice")));
 		assertThatThrownBy(() -> directory.enrich(input, true)).isInstanceOf(IllegalArgumentException.class);
 	}
+	@Test
+	void confirmed_hrl_department_does_not_grant_admin_permissions() {
+		Profile profile = new Profile("fixed-term.Yiheng.LU@cn.bosch.com", "Yiheng.LU", "hash");
+		org.springframework.test.util.ReflectionTestUtils.setField(profile, "orgCode", "HRL");
+		assertThat(directory.resolveParticipant(profile)).isPresent().get()
+				.extracting(VotingParticipant::getOrganizationalUnit).isEqualTo("HRL");
+		assertThat(profile.getRole()).isEqualTo(Profile.Role.PARTICIPANT);
+		verifyNoInteractions(participants);
+	}
 }

@@ -170,7 +170,7 @@ export function HackathonEdit() {
         if (!foundHackathon) {
           notifications.show({
             title: 'Award campaign not found',
-            message: 'The hackathon you are trying to edit could not be found.',
+            message: 'The award campaign you are trying to edit could not be found.',
             color: 'red',
           })
           navigate('/hackathons')
@@ -181,7 +181,7 @@ export function HackathonEdit() {
         if (!user || !PermissionService.canEditHackathon(user, foundHackathon)) {
           notifications.show({
             title: 'Access Denied',
-            message: 'You do not have permission to edit this hackathon.',
+            message: 'You do not have permission to edit this award campaign.',
             color: 'red',
           })
           navigate(`/hackathons/${id}`)
@@ -209,7 +209,7 @@ export function HackathonEdit() {
         console.error('Error loading hackathon:', error)
         notifications.show({
           title: 'Error',
-          message: 'Failed to load hackathon data.',
+          message: 'Failed to load award campaign data.',
           color: 'red',
         })
         navigate('/hackathons')
@@ -270,7 +270,7 @@ export function HackathonEdit() {
       console.error('Error updating hackathon:', error)
       notifications.show({
         title: 'Error',
-        message: 'Failed to update hackathon. Please try again.',
+        message: 'Failed to update award campaign. Please try again.',
         color: 'red',
       })
     } finally {
@@ -301,7 +301,7 @@ export function HackathonEdit() {
           title="Award campaign not found"
           color="red"
         >
-          The hackathon you are trying to edit could not be found.
+          The award campaign you are trying to edit could not be found.
         </Alert>
       </Container>
     )

@@ -59,6 +59,12 @@ public class VotingCriteriaController {
 		useCase.delete(hackathonId, criteriaId);
 	}
 
+	@PostMapping("/award-template")
+	@PreAuthorize("hasRole('ADMIN') or (hasRole('MANAGER') and @hackathonSecurity.isOwnerOrOrgManager(#hackathonId, authentication))")
+	public List<CriteriaResponse> applyAwardTemplate(@PathVariable UUID hackathonId) {
+		return useCase.applyAwardTemplate(hackathonId).stream().map(CriteriaResponse::from).toList();
+	}
+
 	public record CriteriaResponse(UUID id, UUID hackathonId, String name, String description, int weight,
 			int displayOrder) {
 		static CriteriaResponse from(VotingCriteria c) {

@@ -43,6 +43,7 @@ describe('Sidebar audience navigation', () => {
     expect(screen.getByText('概览')).toBeInTheDocument()
     expect(screen.getByText('个人提名')).toBeInTheDocument()
     expect(screen.getByText('浏览与投票')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /用户管理|User Management|Manage Users/i })).not.toBeInTheDocument()
     expect(screen.queryByText('个人资料')).not.toBeInTheDocument()
     expect(screen.queryByText('黑客松')).not.toBeInTheDocument()
     expect(screen.queryByText('团队')).not.toBeInTheDocument()

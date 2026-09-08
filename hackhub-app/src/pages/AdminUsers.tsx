@@ -34,6 +34,8 @@ import type { Organization } from '../utils/organizations'
 import { notifications } from '@mantine/notifications'
 import { useForm } from '@mantine/form'
 import { api } from '../lib/apiClient'
+import { useLanguage } from '../contexts/LanguageContext'
+import { translateUiText } from '../contexts/uiTranslations'
 
 interface User {
   id: string
@@ -42,6 +44,8 @@ interface User {
   role: 'admin' | 'manager' | 'participant'
   createdAt: string
   organizationId?: string
+  orgCode?: string
+  department?: string
 }
 
 interface UserFormData {
@@ -54,6 +58,8 @@ interface UserFormData {
 
 export function AdminUsers() {
   const { user } = useAuthStore()
+  const { language } = useLanguage()
+  const uiText = (value: string) => language === 'zh' ? translateUiText(value) : value
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpened, setModalOpened] = useState(false)
@@ -324,12 +330,15 @@ export function AdminUsers() {
   // Filter users based on search, role, and organization
   const filteredUsers = users.filter(targetUser => {
     const matchesSearch = targetUser.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         targetUser.email.toLowerCase().includes(searchQuery.toLowerCase())
+                         targetUser.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (targetUser.orgCode ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     const matchesRole = !roleFilter || targetUser.role === roleFilter
     
     // Organization filter — uses the userOrgMap built from member lists
     let matchesOrg = true
-    if (organizationFilter) {
+    if (organizationFilter && PermissionService.isAdmin(user!)) {
+      matchesOrg = organizationFilter === 'none' ? !targetUser.department : targetUser.department === organizationFilter
+    } else if (organizationFilter) {
       const orgName = userOrgMap.get(targetUser.id)
       if (organizationFilter === 'none') {
         matchesOrg = !orgName
@@ -378,29 +387,31 @@ export function AdminUsers() {
               placeholder="Search users..."
               leftSection={<IconSearch size={16} />}
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
               style={{ flex: 1 }}
             />
             <Select
               placeholder="Filter by role"
               data={[
-                { value: '', label: 'All Roles' },
-                { value: 'participant', label: 'User' },
-                { value: 'manager', label: 'Manager' },
-                ...(PermissionService.isAdmin(user!) ? [{ value: 'admin', label: 'Admin' }] : []),
+                { value: '', label: uiText('All Roles') },
+                { value: 'participant', label: uiText('User') },
+                { value: 'manager', label: uiText('Manager') },
+                ...(PermissionService.isAdmin(user!) ? [{ value: 'admin', label: uiText('Admin') }] : []),
               ]}
               value={roleFilter}
-              onChange={(value) => setRoleFilter(value || '')}
+              onChange={(value) => { setRoleFilter(value || ''); setCurrentPage(1) }}
               clearable
             />
             <Select
-              placeholder="Filter by organization"
+              placeholder={PermissionService.isAdmin(user!) ? "Filter by department" : "Filter by organization"}
               data={[
-                { value: '', label: 'All Organizations' },
-                ...organizations.map(org => ({ value: org.id, label: org.name }))
+                { value: '', label: uiText(PermissionService.isAdmin(user!) ? 'All departments' : 'All Organizations') },
+                ...(PermissionService.isAdmin(user!)
+                  ? [...new Set(users.map(item => item.department).filter((value): value is string => Boolean(value)))].sort().map(department => ({ value: department, label: department }))
+                  : organizations.map(org => ({ value: org.id, label: org.name })))
               ]}
               value={organizationFilter}
-              onChange={(value) => setOrganizationFilter(value || '')}
+              onChange={(value) => { setOrganizationFilter(value || ''); setCurrentPage(1) }}
               clearable
             />
           </Group>
@@ -419,7 +430,7 @@ export function AdminUsers() {
                   <Table.Tr>
                     <Table.Th>User</Table.Th>
                     <Table.Th>Role</Table.Th>
-                    <Table.Th>Organization</Table.Th>
+                    <Table.Th>{PermissionService.isAdmin(user!) ? 'Department' : 'Organization'}</Table.Th>
                     <Table.Th>Created</Table.Th>
                     <Table.Th>Last Sign In</Table.Th>
                     <Table.Th>Actions</Table.Th>
@@ -443,12 +454,15 @@ export function AdminUsers() {
                           leftSection={getRoleIcon(rowUser.role)}
                           variant="light"
                         >
-                          {rowUser.role.charAt(0).toUpperCase() + rowUser.role.slice(1)}
+                          {rowUser.role === 'participant' ? uiText('User') : uiText(rowUser.role.charAt(0).toUpperCase() + rowUser.role.slice(1))}
                         </Badge>
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm">
-                          {userOrgMap.get(rowUser.id) ?? '—'}
+                          {PermissionService.isAdmin(user!) ? (rowUser.department ?? '—') : (userOrgMap.get(rowUser.id) ?? '—')}
+                        </Text>
+                        <Text size="xs" c="dimmed" translate="no">
+                          {PermissionService.isAdmin(user!) && rowUser.orgCode !== rowUser.department ? rowUser.orgCode : null}
                         </Text>
                       </Table.Td>
                       <Table.Td>

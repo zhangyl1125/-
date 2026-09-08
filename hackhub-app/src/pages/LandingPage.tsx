@@ -11,10 +11,10 @@ import { Link } from 'react-router-dom'
 import { AwardBrand } from '../components/Layout/AwardBrand'
 import './LandingPage.css'
 
-const tracks = [
-  { code: 'V', name: 'VALUE', label: 'Customer value', icon: IconHeartHandshake },
-  { code: 'S', name: 'SHIFT', label: 'Innovation breakthrough', icon: IconBulb },
-  { code: 'U', name: 'UNITE', label: 'Collaboration to win', icon: IconUsersGroup },
+const programIcons = [
+  { label: 'Customer value', icon: IconHeartHandshake },
+  { label: 'Innovation breakthrough', icon: IconBulb },
+  { label: 'Collaboration to win', icon: IconUsersGroup },
 ] as const
 
 const landingVideoSrc = '/media/award-landing-bg.mp4'
@@ -128,7 +128,7 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
                 <IconArrowUpRight aria-hidden="true" size={17} />
               </Link>
             ))}
-            <Link className="award-landing__mobile-sign-in" to="/login" onClick={() => setMenuOpen(false)}>
+            <Link className="award-landing__mobile-sign-in" to={startPath} onClick={() => setMenuOpen(false)}>
               Sign in
             </Link>
           </nav>
@@ -138,8 +138,8 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
       <main className="award-landing__hero">
         <div className="award-landing__program-mark award-landing__reveal" style={{ '--delay': '80ms' } as CSSProperties}>
           <div className="award-landing__track-marks" aria-hidden="true">
-            {tracks.map(({ name, icon: TrackIcon }) => (
-              <span key={name} title={name}>
+            {programIcons.map(({ label, icon: TrackIcon }) => (
+              <span key={label} title={label}>
                 <TrackIcon size={17} stroke={1.7} />
               </span>
             ))}
@@ -165,21 +165,6 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
         </Link>
       </main>
 
-      <footer className="award-landing__tracks" aria-label="Award categories">
-        {tracks.map((track, index) => (
-          <div
-            className="award-landing__track award-landing__reveal"
-            style={{ '--delay': `${560 + index * 80}ms` } as CSSProperties}
-            key={track.name}
-          >
-            <span className="award-landing__track-code" aria-hidden="true">{track.code}</span>
-            <span className="award-landing__track-copy">
-              <strong>{track.name}</strong>
-              <span>{track.label}</span>
-            </span>
-          </div>
-        ))}
-      </footer>
     </div>
   )
 }

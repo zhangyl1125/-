@@ -27,16 +27,17 @@ describe('LandingPage', () => {
     expect(screen.getByRole('link', { name: /Get Started/i })).toHaveAttribute('href', '/overview')
   })
 
-  it('shows the three award tracks', () => {
+  it('keeps the program icons without the removed track footer', () => {
     const { container } = render(
       <MemoryRouter>
         <LandingPage />
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('VALUE')).toBeInTheDocument()
-    expect(screen.getByText('SHIFT')).toBeInTheDocument()
-    expect(screen.getByText('UNITE')).toBeInTheDocument()
+    expect(screen.queryByText('VALUE')).not.toBeInTheDocument()
+    expect(screen.queryByText('SHIFT')).not.toBeInTheDocument()
+    expect(screen.queryByText('UNITE')).not.toBeInTheDocument()
+    expect(container.querySelector('.award-landing__tracks')).not.toBeInTheDocument()
     expect(container.querySelectorAll('.award-landing__track-marks svg')).toHaveLength(3)
   })
 

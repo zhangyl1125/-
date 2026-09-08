@@ -19,6 +19,7 @@ import { useAuthStore } from './store/authStore'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { DigitalPioneerOverview } from './pages/DigitalPioneerOverview'
 import { LandingPage } from './pages/LandingPage'
+import { loginDestination } from './lib/loginDestination'
 
 function App() {
   const [opened, { toggle, close }] = useDisclosure()
@@ -37,8 +38,8 @@ function App() {
     return <LandingPage authenticated={Boolean(user)} />
   }
 
-  // Keep protected and authentication routes covered while the session is being resolved.
-  if (!initialized || loading) {
+  // Keep the login form mounted while submitting so failed attempts retain their input.
+  if (!initialized || (loading && location.pathname !== '/login')) {
     return <LoadingOverlay visible />
   }
 
@@ -99,12 +100,12 @@ function App() {
             <Route path="/organizations" element={<Navigate to="/" replace />} />
             <Route path="/organizations/new" element={<Navigate to="/" replace />} />
             <Route path="/organizations/:id" element={<Navigate to="/" replace />} />
-            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/users" element={isParticipant ? <Navigate to="/overview" replace /> : <AdminUsers />} />
             <Route path="/admin/organizations" element={<Navigate to="/" replace />} />
             <Route path="/hackathons/:hackathonId/judge" element={<JudgingPanel />} />
             <Route path="/hackathons/:hackathonId/leaderboard" element={<Leaderboard />} />
             <Route path="/invite/:token" element={<AcceptInvitation />} />
-            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/login" element={<Navigate to={loginDestination(location.search)} replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell.Main>

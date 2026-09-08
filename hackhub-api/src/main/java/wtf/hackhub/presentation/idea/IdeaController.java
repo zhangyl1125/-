@@ -164,10 +164,11 @@ public class IdeaController {
 	private IdeaResponse response(Idea idea, boolean voted) {
 		var result = IdeaResponse.from(idea, voted);
 		return new IdeaResponse(result.id(), result.title(), result.description(), result.hackathonId(),
-				result.teamId(), result.createdBy(), result.category(), result.tags(), result.votes(), result.status(),
-				result.attachments(), result.repositoryUrl(), result.demoUrl(),
-				nomineeDirectory.enrich(result.projectAttachments(), false), result.totalScore(), result.voteCount(),
-				result.userHasVoted(), result.createdAt(), result.updatedAt());
+				result.teamId(), result.createdBy(),
+				wtf.hackhub.domain.AwardTrack.normalize(result.category(), result.tags()), result.tags(),
+				result.votes(), result.status(), result.attachments(), result.repositoryUrl(), result.demoUrl(),
+				nomineeDirectory.enrichLegacy(result.projectAttachments(), result.createdBy()), result.totalScore(),
+				result.voteCount(), result.userHasVoted(), result.createdAt(), result.updatedAt());
 	}
 
 	// ── DTOs ──────────────────────────────────────────────────────────────────

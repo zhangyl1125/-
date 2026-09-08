@@ -60,7 +60,7 @@ public class VoteIdeaUseCase {
 		List<Idea> currentTrackIdeas = currentVotes.stream()
 				.filter(vote -> existing.isEmpty() || !vote.getIdeaId().equals(ideaId)).map(IdeaVote::getIdeaId)
 				.map(ideaRepository::findById).flatMap(Optional::stream)
-				.filter(votedIdea -> idea.getCategory().equalsIgnoreCase(votedIdea.getCategory())).toList();
+				.filter(votedIdea -> track(idea).equals(track(votedIdea))).toList();
 		if (existing.isEmpty() && currentTrackIdeas.size() >= maxVotesPerTrack) {
 			throw new VoteLimitExceededException(maxVotesPerTrack);
 		}
@@ -98,11 +98,18 @@ public class VoteIdeaUseCase {
 		if (category == null || category.isBlank())
 			throw new IllegalArgumentException("An award category is required");
 		profileRepository.findByIdForUpdate(userId).orElseThrow(() -> new ParticipantNotEligibleException(userId));
-		var selected = voteRepository.findAllByUserIdAndHackathonId(userId, hackathonId).stream()
-				.filter(vote -> ideaRepository.findById(vote.getIdeaId())
-						.map(idea -> category.equalsIgnoreCase(idea.getCategory())).orElse(false))
+		var selected = voteRepository
+				.findAllByUserIdAndHackathonId(userId,
+						hackathonId)
+				.stream()
+				.filter(vote -> ideaRepository.findById(vote.getIdeaId()).map(idea -> wtf.hackhub.domain.AwardTrack
+						.normalize(category, java.util.List.of()).equals(track(idea))).orElse(false))
 				.toList();
 		voteRepository.deleteAll(selected);
+	}
+
+	private static String track(Idea idea) {
+		return wtf.hackhub.domain.AwardTrack.normalize(idea.getCategory(), idea.getTags());
 	}
 
 	private VotingParticipant resolveProjectOwner(Idea idea) {

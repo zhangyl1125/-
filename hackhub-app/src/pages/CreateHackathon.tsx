@@ -135,7 +135,7 @@ const CreateHackathon = () => {
     if (!user || !user.id) {
       notifications.show({
         title: 'Error',
-        message: 'You must be logged in to create a hackathon',
+        message: 'You must be logged in to create an award campaign',
         color: 'red'
       })
       return
@@ -192,7 +192,7 @@ const CreateHackathon = () => {
       } else {
         notifications.show({
           title: 'Error',
-          message: 'Failed to create hackathon - no result returned.',
+          message: 'Failed to create award campaign - no result returned.',
           color: 'red'
         })
       }
@@ -200,7 +200,7 @@ const CreateHackathon = () => {
       console.error('Error creating hackathon:', error)
       notifications.show({
         title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to create hackathon. Please try again.',
+        message: error instanceof Error ? error.message : 'Failed to create award campaign. Please try again.',
         color: 'red'
       })
     } finally {
@@ -227,7 +227,7 @@ const CreateHackathon = () => {
             <Grid.Col span={12}>
               <Textarea
                 label="Description"
-                placeholder="Describe your hackathon"
+                placeholder="Describe the award campaign"
                 minRows={4}
                 required
                 {...form.getInputProps('description')}
@@ -247,7 +247,7 @@ const CreateHackathon = () => {
               </Grid.Col>
             )}
 
-            <Grid.Col span={6}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <DateTimePicker
                 label="Start Date"
                 placeholder="Select start date and time"
@@ -256,7 +256,7 @@ const CreateHackathon = () => {
               />
             </Grid.Col>
 
-            <Grid.Col span={6}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <DateTimePicker
                 label="End Date"
                 placeholder="Select end date and time"
@@ -265,7 +265,7 @@ const CreateHackathon = () => {
               />
             </Grid.Col>
 
-            <Grid.Col span={6}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <NumberInput
                 label="Maximum Participants"
                 placeholder="Enter max participants"
@@ -278,7 +278,7 @@ const CreateHackathon = () => {
 
 
 
-            <Grid.Col span={6}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <Select
                 label="Status"
                 data={[
@@ -291,7 +291,7 @@ const CreateHackathon = () => {
               />
             </Grid.Col>
 
-            <Grid.Col span={6}>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput
                 label="Banner URL"
                 placeholder="Optional banner image URL"
@@ -365,7 +365,7 @@ const CreateHackathon = () => {
               <Divider my="md" />
               <Text fw={500} mb="md">Rules & Guidelines</Text>
               <Textarea
-                placeholder="Enter rules and guidelines for the hackathon"
+                placeholder="Enter rules and guidelines for the award campaign"
                 minRows={4}
                 {...form.getInputProps('rulesText')}
               />

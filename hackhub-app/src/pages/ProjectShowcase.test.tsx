@@ -145,15 +145,15 @@ describe('ProjectShowcase', () => {
     )
 
     expect(await screen.findByText('Choose a track to begin')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /Contribution title/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Application category/ })).not.toBeInTheDocument()
 
     const valueTrack = screen.getByRole('radio', { name: /VALUE.*Customer Values/ })
     expect(valueTrack).toHaveAttribute('aria-checked', 'false')
     await user.click(valueTrack)
 
     expect(valueTrack).toHaveAttribute('aria-checked', 'true')
-    expect(await screen.findByRole('textbox', { name: /Contribution title/ })).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /Application category/ })).not.toBeInTheDocument()
+    expect(await screen.findByRole('textbox', { name: /Application category/ })).toHaveValue('Customer Values')
+    expect(screen.queryByRole('textbox', { name: /Contribution title/ })).not.toBeInTheDocument()
   })
 
   it('shows a clear filled vote state directly on the project card', async () => {
@@ -221,12 +221,17 @@ describe('ProjectShowcase', () => {
     expect(await screen.findByRole('heading', { name: /Nominate a Digital Pioneer/ })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /Executive summary/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: /SHIFT.*Innovation Breakthrough/ }))
-    expect(screen.getByRole('textbox', { name: /Executive summary/ })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /Achievements & impact/ })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /Culture demonstration/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Executive summary \(the elevator pitch\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Details of core achievement and business impact/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /How you demonstrate Bosch China culture/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Tags you want to add/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Application category/ })).toHaveValue('Innovation Breakthrough')
     expect(screen.queryByText('Team')).not.toBeInTheDocument()
     expect(screen.queryByText('Customer Portal Renewal')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Award event' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Position/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Nominating HoD/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Supporting evidence URL/ })).not.toBeInTheDocument()
   })
 
   it('lets an administrator choose the actual associate for manager nomination', async () => {
@@ -240,7 +245,7 @@ describe('ProjectShowcase', () => {
       await user.type(nominee, 'Named')
       await user.click(await screen.findByRole('option', { name: 'Named Associate (associate@example.com)' }))
       expect(nominee).toHaveValue('Named Associate (associate@example.com)')
-      expect(screen.getByRole('textbox', { name: /Position/ })).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: /Application category/ })).toHaveValue('Customer Values')
     } finally {
       currentUser.role = 'participant'
     }
@@ -257,10 +262,9 @@ describe('ProjectShowcase', () => {
     )
 
     await user.click(await screen.findByRole('radio', { name: /VALUE.*Customer Values/ }))
-    await user.type(await screen.findByRole('textbox', { name: /Contribution title/ }), 'Customer Portal')
     await user.type(screen.getByRole('textbox', { name: /Executive summary/ }), 'A better customer experience in four clear sentences.')
-    await user.type(screen.getByRole('textbox', { name: /Achievements & impact/ }), 'Reduced service time by 30% and saved RMB 200,000.')
-    await user.type(screen.getByRole('textbox', { name: /Culture demonstration/ }), 'Listened to users and delivered an end-to-end solution.')
+    await user.type(screen.getByRole('textbox', { name: /Details of core achievement and business impact/ }), 'Reduced service time by 30% and saved RMB 200,000.')
+    await user.type(screen.getByRole('textbox', { name: /How you demonstrate Bosch China culture/ }), 'Listened to users and delivered an end-to-end solution.')
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
     expect(fileInput).not.toBeNull()
     await user.upload(fileInput!, new File(['image'], 'project.png', { type: 'image/png' }))
@@ -273,13 +277,14 @@ describe('ProjectShowcase', () => {
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
       teamId: 'personal-team',
       category: 'Customer Values',
+      title: 'User',
     }))
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
       status: 'submitted',
       projectAttachments: expect.arrayContaining([expect.objectContaining({ type: 'nomination', nomineeUserId: 'user-1', name: 'User' })]),
     }))
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
-      description: expect.stringContaining('Core Achievement & Business Impact'),
+      description: expect.stringContaining('Details of Core Achievement and Business Impact (Including Financial Figures)'),
     }))
     expect(createIdea).toHaveBeenCalledTimes(1)
     expect(updateIdea).not.toHaveBeenCalled()

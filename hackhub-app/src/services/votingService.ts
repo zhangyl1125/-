@@ -22,6 +22,10 @@ export class VotingService {
     return api.get(`/api/v1/hackathons/${hackathonId}/voting-criteria`)
   }
 
+  static async applyAwardTemplate(hackathonId: string): Promise<VotingCriteria[]> {
+    return api.post(`/api/v1/hackathons/${hackathonId}/voting-criteria/award-template`)
+  }
+
   static async createCriteria(
     hackathonId: string,
     data: { name: string; description?: string; weight: number; displayOrder: number }
