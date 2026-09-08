@@ -31,7 +31,6 @@ import {
   IconSearch,
   IconUser,
   IconExternalLink,
-  IconTool,
   IconUpload,
   IconGavel,
   IconArrowRight,
@@ -39,14 +38,15 @@ import {
   IconPhoto,
   IconCheck,
 } from '@tabler/icons-react'
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { useLanguage } from '../contexts/LanguageContext'
 import { notifications } from '@mantine/notifications'
 import { getAllPages } from '../services/pagination'
 import { api, ApiError } from '../lib/apiClient'
 import { HackathonService } from '../services/hackathonService'
-import type { Hackathon } from '../services/hackathonService'
+import { PublicAwardService, type AwardSummary } from '../services/publicAwardService'
 import { IdeaService } from '../services/ideaService'
 import { OrganizationService } from '../services/organizationService'
 import { ProfileService } from '../services/profileService'
@@ -57,7 +57,6 @@ import {
   DIGITAL_PIONEER_TRACKS,
   normalizeDigitalPioneerTrack,
 } from '../config/digitalPioneer'
-import { AwardLens } from '../components/DigitalPioneer/AwardLens'
 import { NominationComments } from '../components/DigitalPioneer/NominationComments'
 import './DigitalPioneer.css'
 
@@ -113,9 +112,20 @@ const emptyUploadForm = (): ProjectUploadForm => ({
   technologies: '',
 })
 
+const parseNominationTags = (value: string): string[] =>
+  [...new Set(value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))]
+
 export function ProjectShowcase({ nominationMode = false }: { nominationMode?: boolean }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { language } = useLanguage()
+  const [searchParams] = useSearchParams()
+  const nomineeToOpen = searchParams.get('nominee')
+  const canNominate = user?.role === 'admin' || user?.role === 'manager'
+
+  const loadSequence = useRef(0)
+  const restoredNominee = useRef<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmClearVotes, setConfirmClearVotes] = useState(false)
@@ -126,7 +136,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   const [nomineeLoadError, setNomineeLoadError] = useState(false)
   const [votingIds, setVotingIds] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
-  const [hackathons, setHackathons] = useState<Hackathon[]>([])
+  const [hackathons, setHackathons] = useState<AwardSummary[]>([])
   const [projectImage, setProjectImage] = useState<File | null>(null)
   const [uploadForm, setUploadForm] = useState<ProjectUploadForm>(emptyUploadForm)
   const [assignedJudgeHackathons, setAssignedJudgeHackathons] = useState<Set<string>>(new Set())
@@ -137,9 +147,21 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   })
 
   const loadProjects = useCallback(async () => {
+      const sequence = ++loadSequence.current
       setLoading(true)
+      setLoadError(false)
       try {
+        if (!user) {
+          const awards = await getAllPages((page) => PublicAwardService.getAwards(page))
+          if (sequence !== loadSequence.current) return
+          setHackathons(awards)
+          const nominations = await Promise.all(awards.map((award) => getAllPages((page) => PublicAwardService.getNominations(award.id, page))))
+          if (sequence !== loadSequence.current) return
+          setProjects(nominations.flat().map((nomination) => ({ ...nomination, team_members: [], user_vote: false })))
+          return
+        }
         const loadedHackathons = await getAllPages((page) => HackathonService.getHackathons(page, 100))
+        if (sequence !== loadSequence.current) return
         setHackathons(loadedHackathons)
         const currentAward = loadedHackathons.find((award) => award.status === 'running') ?? loadedHackathons[0]
         setUploadForm((current) => current.hackathonId || loadedHackathons.length === 0
@@ -205,8 +227,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
           return { projectList }
         }))
+        if (sequence !== loadSequence.current) return
         setProjects(hackathonData.flatMap(({ projectList }) => projectList))
       } catch (error) {
+        if (sequence !== loadSequence.current) return
+        setLoadError(true)
         console.error('Error loading projects:', error)
         notifications.show({
           title: 'Unable to load nominations',
@@ -214,12 +239,21 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           color: 'red',
         })
       } finally {
-        setLoading(false)
+        if (sequence === loadSequence.current) setLoading(false)
       }
-  }, [])
+  }, [user])
 
   useEffect(() => {
+    setProjects([])
+    setAssignedJudgeHackathons(new Set())
+    setNominees([])
+    setNomineeLoadError(false)
+    setUploadForm(emptyUploadForm())
+    setProjectImage(null)
+    setSelectedProject(null)
+    setModalOpened(false)
     void loadProjects()
+    return () => { loadSequence.current += 1 }
   }, [loadProjects])
 
   useEffect(() => {
@@ -243,8 +277,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     return () => { cancelled = true }
   }, [nominationMode, user])
 
+  const nominationTags = parseNominationTags(uploadForm.technologies)
+  const tooManyTags = nominationTags.length > 5
+
   const handleProjectUpload = async () => {
-    if (!user || uploading) return
+    if (!user || !canNominate || uploading) return
     if (!uploadForm.hackathonId || !uploadForm.executiveSummary.trim()
       || !uploadForm.achievementImpact.trim() || !uploadForm.cultureDemonstration.trim()
       || !uploadForm.category.trim() || !projectImage) {
@@ -256,14 +293,16 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       return
     }
 
+    if (tooManyTags) {
+      notifications.show({ title: 'Too many tags', message: 'Add up to 5 tags, separated by commas.', color: 'orange' })
+      return
+    }
+
     const nomineeUserId = uploadForm.nomineeUserId || user!.id
     const nomineeName = nominees.find((candidate) => candidate.id === nomineeUserId)?.name ?? user!.name
     setUploading(true)
     try {
-      const technologies = uploadForm.technologies
-        .split(',')
-        .map((technology) => technology.trim())
-        .filter(Boolean)
+      const technologies = nominationTags
       const description = [
         `Executive Summary\n${uploadForm.executiveSummary.trim()}`,
         `Details of Core Achievement and Business Impact (Including Financial Figures)\n${uploadForm.achievementImpact.trim()}`,
@@ -328,11 +367,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
   const handleVote = async (projectId: string) => {
     if (!user) {
-      notifications.show({
-        title: 'Login Required',
-        message: 'Please log in to vote for a nominee.',
-        color: 'orange',
-      })
+      navigate(`/login?redirect=${encodeURIComponent(`/projects?nominee=${projectId}`)}`)
       return
     }
 
@@ -370,6 +405,17 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       setVotingIds((current) => { const next = new Set(current); next.delete(projectId); return next })
     }
   }
+
+  useEffect(() => {
+    if (!nomineeToOpen) { restoredNominee.current = null; return }
+    if (loading || restoredNominee.current === nomineeToOpen) return
+    const nomination = projects.find((project) => project.id === nomineeToOpen)
+    if (nomination) {
+      restoredNominee.current = nomineeToOpen
+      setSelectedProject(nomination)
+      setModalOpened(true)
+    }
+  }, [nomineeToOpen, loading, projects])
 
   const filteredProjects = useMemo(() => {
     return projects.filter(project => {
@@ -420,40 +466,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     }
   }
 
-  if (!user) {
-    return (
-      <Container size="md" py="xl">
-        <Center py="xl">
-          <Stack align="center" gap="md">
-            <ThemeIcon size={80} variant="light" color="red">
-              <IconTool style={{ width: 40, height: 40 }} />
-            </ThemeIcon>
-            <Title order={3}>Access Denied</Title>
-            <Text c="dimmed" ta="center">
-              You don&apos;t have permission to view nominations. Please contact an administrator.
-            </Text>
-          </Stack>
-        </Center>
-      </Container>
-    )
-  }
-
   if (nominationMode) {
     return (
       <Container size={1240} py={{ base: 'md', md: 'xl' }} className="dp-page">
-        <section className="dp-hero dp-nomination-hero" aria-labelledby="nomination-title">
-          <Grid className="dp-hero__content" align="center">
-            <Grid.Col span={{ base: 12, md: 8 }}>
-              <h1 id="nomination-title" className="dp-section-title" style={{ marginTop: 18 }}>
-                Nominate a Digital Pioneer.
-              </h1>
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 4 }}>
-              <AwardLens compact />
-            </Grid.Col>
-          </Grid>
-        </section>
-
         <section className="dp-nomination-flow" aria-labelledby="track-choice-title">
           <div className="dp-flow-heading">
             <div>
@@ -471,12 +486,12 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   data-active={isSelected}
                   role="radio"
                   aria-checked={isSelected}
-                  aria-controls="nomination-form"
+                  aria-controls="nomination-track-description nomination-form"
                   aria-expanded={isSelected}
                   onClick={() => setUploadForm((current) => ({ ...current, category: track.value }))}
                 >
                   <span className="dp-nomination-track__topline">
-                    <span className="dp-nomination-track__code">{track.shorthand}</span>
+                    <span aria-hidden="true" />
                     <span className="dp-nomination-track__check" aria-hidden="true">
                       {isSelected ? <IconCheck size={15} stroke={2.4} /> : null}
                     </span>
@@ -487,6 +502,16 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               )
             })}
           </div>
+
+          {selectedNominationTrack && (
+            <div id="nomination-track-description" className="dp-fieldset" translate="no" aria-live="polite">
+              <Title order={3}>{selectedNominationTrack.label}</Title>
+              <Text className="dp-track-intro" mt="md">{selectedNominationTrack.description}</Text>
+              <ul className="dp-standard-list">
+                {selectedNominationTrack.standards.map((standard) => <li key={standard}>{standard}</li>)}
+              </ul>
+            </div>
+          )}
 
           {!selectedNominationTrack ? (
             <div className="dp-track-gate" role="status">
@@ -513,14 +538,14 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       <span>Selected</span>
                     </Badge>
                   </Group>
-                  <div className="dp-fieldset" style={{ borderTop: 0, paddingTop: 0 }}>
+                  <div className="dp-fieldset" translate="no" style={{ borderTop: 0, paddingTop: 0 }}>
                     <Grid gutter="md">
                       <Grid.Col span={{ base: 12, sm: 6 }}>
-                        {user.role === 'participant' ? (
-                          <TextInput label="Nominee name" value={user.name} readOnly />
+                        {!user || user.role === 'participant' ? (
+                          <TextInput label="Outlook Name" value={user?.name ?? ''} readOnly />
                         ) : (
                           <Select
-                            label="Nominee name"
+                            label="Outlook Name"
                             searchable
                             required
                             data={nominees.length ? nominees.map((candidate) => ({ value: candidate.id, label: `${candidate.name} (${candidate.email})` })) : [{ value: user.id, label: user.name }]}
@@ -532,7 +557,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       </Grid.Col>
                       <Grid.Col span={{ base: 12, sm: 6 }}>
                         <FileInput
-                          label="Photo"
+                          label="Personal Photo"
                           required
                           accept="image/jpeg,image/png,image/webp"
                           leftSection={<IconPhoto size={16} />}
@@ -542,16 +567,25 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                         />
                       </Grid.Col>
                       <Grid.Col span={12}>
-                        <TextInput label="Application category" value={selectedNominationTrack.label} readOnly />
+                        <Select
+                          label="Award Category"
+                          renderOption={({ option }) => <span translate="no">{option.label}</span>}
+                          data={DIGITAL_PIONEER_TRACKS.map((track) => ({ value: track.value, label: track.label }))}
+                          value={uploadForm.category}
+                          allowDeselect={false}
+                          onChange={(value) => {
+                            if (value) setUploadForm((current) => ({ ...current, category: value }))
+                          }}
+                        />
                       </Grid.Col>
                     </Grid>
                   </div>
 
-                  <div className="dp-fieldset">
+                  <div className="dp-fieldset" translate="no">
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">01</span><span>Executive summary (the elevator pitch)</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">01</span><span>Executive Summary (The Elevator Pitch)</span></>}
                           required
                           minRows={4}
                           maxLength={1200}
@@ -563,11 +597,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     </div>
                   </div>
 
-                  <div className="dp-fieldset">
+                  <div className="dp-fieldset" translate="no">
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Details of core achievement and business impact (including financial figures)</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Details of Core achievement and business impact (*including Financial Figures)</span></>}
                           required
                           minRows={4}
                           maxLength={2400}
@@ -578,11 +612,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     </div>
                   </div>
 
-                  <div className="dp-fieldset">
+                  <div className="dp-fieldset" translate="no">
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">03</span><span>How you demonstrate Bosch China culture (especially in your applied category)?</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">03</span><span>How you demonstrate BD China culture (especially on you applied category) ?</span></>}
                           required
                           minRows={4}
                           maxLength={2000}
@@ -593,11 +627,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     </div>
                   </div>
 
-                  <div className="dp-fieldset">
+                  <div className="dp-fieldset" translate="no">
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <TextInput
                           label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags you want to add</span></>}
+                          description="Add up to 5 tags, separated by commas."
+                          error={tooManyTags ? 'Add up to 5 tags, separated by commas.' : undefined}
                           value={uploadForm.technologies}
                           onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
                         />
@@ -605,12 +641,14 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     </div>
                   </div>
 
+                  {!canNominate && <Text size="sm" c="dimmed">{language === 'zh' ? '仅管理员和评选管理者可提交提名。' : 'Only administrators and award managers can submit nominations.'}</Text>}
                   <Group justify="flex-end" align="center" pt="lg">
                     <Button
                       className="dp-primary-button"
                       rightSection={<IconArrowRight size={17} />}
                       onClick={() => void handleProjectUpload()}
                       loading={uploading}
+                      disabled={!canNominate || tooManyTags}
                     >
                       Submit nomination
                     </Button>
@@ -625,21 +663,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
   return (
     <Container size={1240} py={{ base: 'sm', md: 'lg' }} className="dp-page">
-      {/* Check permissions first */}
-      {!user ? (
-        <Center py="xl">
-          <Stack align="center" gap="md">
-            <ThemeIcon size={80} variant="light" color="red">
-              <IconTool style={{ width: 40, height: 40 }} />
-            </ThemeIcon>
-            <Title order={3}>Access Denied</Title>
-            <Text c="dimmed" ta="center">
-              You don't have permission to view nominations. Please contact an administrator.
-            </Text>
-          </Stack>
-        </Center>
-      ) : (
       <Stack gap="lg">
+        {loadError && <Alert color="red" title="Unable to load nominations"><Button variant="subtle" onClick={() => void loadProjects()}>Retry</Button></Alert>}
         <div className="dp-selection-header">
           <Group justify="space-between" align="center">
             <div>
@@ -915,7 +940,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   Additional evidence
                 </Button>
               )}
-              {(user.role === 'admin' || user.role === 'manager'
+              {(user?.role === 'admin' || user?.role === 'manager'
                 || assignedJudgeHackathons.has(selectedProject.hackathon_id)) && (
                 <Button
                   leftSection={<IconGavel size={16} />}
@@ -940,7 +965,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               {selectedProject.user_vote ? 'Voted' : 'Vote'} ({selectedProject.votes})
             </Button>
 
-            {confirmClearVotes ? (
+            {user && (confirmClearVotes ? (
               <Stack gap="xs">
                 <Text size="sm">Reset all your votes in this track?</Text>
                 <Group justify="flex-end">
@@ -948,15 +973,14 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   <Button color="red" loading={clearingVotes} onClick={() => void clearTrackVotes()}>Reset votes</Button>
                 </Group>
               </Stack>
-            ) : <Button variant="subtle" color="gray" onClick={() => setConfirmClearVotes(true)}>Reset my track votes</Button>}
+            ) : <Button variant="subtle" color="gray" onClick={() => setConfirmClearVotes(true)}>Reset my track votes</Button>)}
 
-            <NominationComments key={selectedProject.id} ideaId={selectedProject.id} userId={user.id} isAdmin={user.role === 'admin'} />
+            {user && <NominationComments key={selectedProject.id} ideaId={selectedProject.id} userId={user.id} isAdmin={user.role === 'admin'} />}
           </Stack>
         )}
       </Modal>
 
       </Stack>
-      )}
     </Container>
   )
 }

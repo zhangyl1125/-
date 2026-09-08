@@ -55,7 +55,8 @@ public class SecurityConfig {
 																											// leaderboard
 						.requestMatchers(HttpMethod.GET, "/api/v1/invitations/**").permitAll() // public invitation
 																								// preview
-						.anyRequest().authenticated())
+						.requestMatchers(HttpMethod.GET, "/api/v1/public/awards", "/api/v1/public/awards/*/nominations")
+						.permitAll().anyRequest().authenticated())
 				.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
 				// Return 401 (not 403) for unauthenticated requests
 				.exceptionHandling(

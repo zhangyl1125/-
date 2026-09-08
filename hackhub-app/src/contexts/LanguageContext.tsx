@@ -236,6 +236,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
 
     const translateElementAttributes = (element: Element) => {
+      if (element.closest('[translate="no"]')) return
       let savedAttributes = originalAttributes.current.get(element)
       if (!savedAttributes) {
         savedAttributes = new Map()

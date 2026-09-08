@@ -92,15 +92,23 @@ class IdeaControllerTest {
 	void create_idea_valid_returns_201() throws Exception {
 		when(submitIdeaUseCase.executeNomination(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
 				any())).thenReturn(idea());
-		mvc.perform(post("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asParticipant(USER_ID))
+		mvc.perform(post("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asAdmin(USER_ID))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"title\":\"My Idea\",\"description\":\"Desc\",\"category\":\"tech\"}"))
 				.andExpect(status().isCreated()).andExpect(jsonPath("$.title").value("My Idea"));
 	}
 
 	@Test
-	void create_idea_missing_title_returns_400() throws Exception {
+	void participant_cannot_submit_nomination() throws Exception {
 		mvc.perform(post("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asParticipant(USER_ID))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"title\":\"My Idea\",\"description\":\"Desc\",\"category\":\"tech\"}"))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void create_idea_missing_title_returns_400() throws Exception {
+		mvc.perform(post("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asAdmin(USER_ID))
 				.contentType(MediaType.APPLICATION_JSON).content("{\"description\":\"d\",\"category\":\"tech\"}"))
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.title").value("Validation Failed"));
 	}

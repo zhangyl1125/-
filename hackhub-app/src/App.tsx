@@ -1,9 +1,6 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { AppShell, LoadingOverlay } from '@mantine/core'
-import { useDisclosure } from '@mantine/hooks'
-import { useEffect } from 'react'
-import { Header } from './components/Layout/Header'
-import { Sidebar } from './components/Layout/Sidebar'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
+import { LoadingOverlay } from '@mantine/core'
+import { useEffect, type ReactNode } from 'react'
 import { AwardManagement } from './pages/AwardManagement'
 import CreateHackathon from './pages/CreateHackathon'
 import { HackathonEdit } from './pages/HackathonEdit'
@@ -19,10 +16,17 @@ import { useAuthStore } from './store/authStore'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { DigitalPioneerOverview } from './pages/DigitalPioneerOverview'
 import { LandingPage } from './pages/LandingPage'
+import { useAwardAccess } from './hooks/useAwardAccess'
 import { loginDestination } from './lib/loginDestination'
 
+function ReviewAccess({ children }: { children: ReactNode }) {
+  const { canReview, canManage, campaignIds, loading } = useAwardAccess()
+  const { hackathonId } = useParams()
+  if (loading) return <LoadingOverlay visible />
+  return (hackathonId ? canManage || campaignIds.includes(hackathonId) : canReview) ? children : <Navigate to="/projects" replace />
+}
+
 function App() {
-  const [opened, { toggle, close }] = useDisclosure()
   const location = useLocation()
   const { user, loading, initialized, initialize } = useAuthStore()
 
@@ -33,9 +37,13 @@ function App() {
     }
   }, [initialized, initialize])
 
-  // Keep the public home page available even when a previous session is restored.
-  if (location.pathname === '/') {
-    return <LandingPage authenticated={Boolean(user)} />
+  // Public website sections share the landing background and original page components.
+  if (['/', '/overview', '/nominate', '/projects'].includes(location.pathname)) {
+    return <LandingPage>
+      {location.pathname === '/nominate' ? <ProjectShowcase nominationMode />
+        : location.pathname === '/projects' ? <ProjectShowcase />
+        : <DigitalPioneerOverview />}
+    </LandingPage>
   }
 
   // Keep the login form mounted while submitting so failed attempts retain their input.
@@ -60,29 +68,12 @@ function App() {
 
   return (
     <RealtimeProvider>
-      <AppShell
-        header={{ height: 70 }}
-        navbar={{
-          width: 300,
-          breakpoint: '90em',
-          collapsed: { mobile: !opened, desktop: true },
-        }}
-        padding="md"
-      >
-        <AppShell.Header className="dp-app-header">
-          <Header opened={opened} toggle={toggle} />
-        </AppShell.Header>
-
-        <AppShell.Navbar p="md" className="dp-app-navbar">
-          <Sidebar onNavigate={close} />
-        </AppShell.Navbar>
-
-        <AppShell.Main className="dp-app-main">
+      <LandingPage>
           <Routes>
             <Route path="/overview" element={<DigitalPioneerOverview />} />
-            <Route path="/committee" element={<AwardManagement />} />
-            <Route path="/awards" element={<AwardManagement />} />
-            <Route path="/awards/:id" element={<AwardManagement />} />
+            <Route path="/committee" element={<ReviewAccess><AwardManagement /></ReviewAccess>} />
+            <Route path="/awards" element={<ReviewAccess><AwardManagement /></ReviewAccess>} />
+            <Route path="/awards/:id" element={<ReviewAccess><AwardManagement /></ReviewAccess>} />
             <Route path="/hackathons" element={isParticipant ? <Navigate to="/" replace /> : <AwardManagement />} />
             <Route path="/hackathons/create" element={isParticipant ? <Navigate to="/" replace /> : <CreateHackathon />} />
             <Route path="/hackathons/:id" element={isParticipant ? <Navigate to="/" replace /> : <AwardManagement />} />
@@ -102,14 +93,13 @@ function App() {
             <Route path="/organizations/:id" element={<Navigate to="/" replace />} />
             <Route path="/admin/users" element={isParticipant ? <Navigate to="/overview" replace /> : <AdminUsers />} />
             <Route path="/admin/organizations" element={<Navigate to="/" replace />} />
-            <Route path="/hackathons/:hackathonId/judge" element={<JudgingPanel />} />
-            <Route path="/hackathons/:hackathonId/leaderboard" element={<Leaderboard />} />
+            <Route path="/hackathons/:hackathonId/judge" element={<ReviewAccess><JudgingPanel /></ReviewAccess>} />
+            <Route path="/hackathons/:hackathonId/leaderboard" element={<ReviewAccess><Leaderboard /></ReviewAccess>} />
             <Route path="/invite/:token" element={<AcceptInvitation />} />
             <Route path="/login" element={<Navigate to={loginDestination(location.search)} replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </AppShell.Main>
-      </AppShell>
+      </LandingPage>
     </RealtimeProvider>
   )
 }

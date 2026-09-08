@@ -13,6 +13,9 @@ import java.util.UUID;
 
 public interface HackathonRepository extends JpaRepository<Hackathon, UUID> {
 
+	Page<Hackathon> findByVisibilityAndStatusNotOrderByCreatedAtDesc(Hackathon.Visibility visibility,
+			Hackathon.Status status, Pageable pageable);
+
 	Page<Hackathon> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
 	Page<Hackathon> findByStatusOrderByCreatedAtDesc(Hackathon.Status status, Pageable pageable);

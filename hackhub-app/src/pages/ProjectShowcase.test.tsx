@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MantineProvider } from '@mantine/core'
@@ -94,6 +94,7 @@ vi.mock('../services/judgingService', () => ({
 }))
 
 describe('ProjectShowcase', () => {
+  afterEach(() => { currentUser.role = 'participant' })
   it('shows nominees without exposing internal event concepts', async () => {
     render(
       <MantineProvider>
@@ -137,7 +138,7 @@ describe('ProjectShowcase', () => {
   it('requires a track choice before revealing the nomination form', async () => {
     const user = userEvent.setup()
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <MemoryRouter>
           <ProjectShowcase nominationMode />
         </MemoryRouter>
@@ -145,15 +146,22 @@ describe('ProjectShowcase', () => {
     )
 
     expect(await screen.findByText('Choose a track to begin')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /Application category/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Award Category/ })).not.toBeInTheDocument()
 
-    const valueTrack = screen.getByRole('radio', { name: /VALUE.*Customer Values/ })
+    const valueTrack = screen.getByRole('radio', { name: /Customer Values/ })
     expect(valueTrack).toHaveAttribute('aria-checked', 'false')
     await user.click(valueTrack)
 
     expect(valueTrack).toHaveAttribute('aria-checked', 'true')
-    expect(await screen.findByRole('textbox', { name: /Application category/ })).toHaveValue('Customer Values')
+    expect(await screen.findByRole('textbox', { name: /Award Category/ })).toHaveValue('Customer Values')
     expect(screen.queryByRole('textbox', { name: /Contribution title/ })).not.toBeInTheDocument()
+    expect(document.getElementById('nomination-track-description')).toHaveTextContent('Turn deep customer understanding into tangible, lasting value.')
+    await user.type(screen.getByRole('textbox', { name: /Executive Summary/ }), 'Keep this contribution when switching categories.')
+    await user.click(screen.getByRole('textbox', { name: 'Award Category' }))
+    await user.click(await screen.findByRole('option', { name: 'Collaboration to Win' }))
+    expect(screen.getByRole('radio', { name: /Collaboration to Win/ })).toHaveAttribute('aria-checked', 'true')
+    expect(document.getElementById('nomination-track-description')).toHaveTextContent('Break boundaries, share ownership, and turn collective effort into shared success.')
+    expect(screen.getByRole('textbox', { name: /Executive Summary/ })).toHaveValue('Keep this contribution when switching categories.')
   })
 
   it('shows a clear filled vote state directly on the project card', async () => {
@@ -218,14 +226,16 @@ describe('ProjectShowcase', () => {
       </MantineProvider>
     )
 
-    expect(await screen.findByRole('heading', { name: /Nominate a Digital Pioneer/ })).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /Executive summary/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('radio', { name: /SHIFT.*Innovation Breakthrough/ }))
-    expect(screen.getByRole('textbox', { name: /Executive summary \(the elevator pitch\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /Details of core achievement and business impact/ })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /How you demonstrate Bosch China culture/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Choose an award category' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Nominate a Digital Pioneer/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Executive Summary/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: /Innovation Breakthrough/ }))
+    expect(screen.getByRole('textbox', { name: /Executive Summary \(The Elevator Pitch\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Details of Core achievement and business impact/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /How you demonstrate BD China culture/ })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Tags you want to add/ })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /Application category/ })).toHaveValue('Innovation Breakthrough')
+    expect(screen.getByRole('textbox', { name: /Award Category/ })).toHaveValue('Innovation Breakthrough')
+    expect(screen.getByRole('button', { name: 'Submit nomination' })).toBeDisabled()
     expect(screen.queryByText('Team')).not.toBeInTheDocument()
     expect(screen.queryByText('Customer Portal Renewal')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Award event' })).not.toBeInTheDocument()
@@ -239,19 +249,20 @@ describe('ProjectShowcase', () => {
     try {
       const user = userEvent.setup()
       render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase nominationMode /></MemoryRouter></MantineProvider>)
-      await user.click(await screen.findByRole('radio', { name: /VALUE.*Customer Values/ }))
-      const nominee = await screen.findByRole('textbox', { name: /Nominee name/ })
+      await user.click(await screen.findByRole('radio', { name: /Customer Values/ }))
+      const nominee = await screen.findByRole('textbox', { name: /Outlook Name/ })
       await user.clear(nominee)
       await user.type(nominee, 'Named')
       await user.click(await screen.findByRole('option', { name: 'Named Associate (associate@example.com)' }))
       expect(nominee).toHaveValue('Named Associate (associate@example.com)')
-      expect(screen.getByRole('textbox', { name: /Application category/ })).toHaveValue('Customer Values')
+      expect(screen.getByRole('textbox', { name: /Award Category/ })).toHaveValue('Customer Values')
     } finally {
       currentUser.role = 'participant'
     }
   })
 
   it('atomically submits the complete nomination after its photo upload' , async () => {
+    currentUser.role = 'admin'
     const user = userEvent.setup()
     render(
       <MantineProvider>
@@ -261,13 +272,20 @@ describe('ProjectShowcase', () => {
       </MantineProvider>
     )
 
-    await user.click(await screen.findByRole('radio', { name: /VALUE.*Customer Values/ }))
-    await user.type(screen.getByRole('textbox', { name: /Executive summary/ }), 'A better customer experience in four clear sentences.')
-    await user.type(screen.getByRole('textbox', { name: /Details of core achievement and business impact/ }), 'Reduced service time by 30% and saved RMB 200,000.')
-    await user.type(screen.getByRole('textbox', { name: /How you demonstrate Bosch China culture/ }), 'Listened to users and delivered an end-to-end solution.')
+    await user.click(await screen.findByRole('radio', { name: /Customer Values/ }))
+    await user.type(screen.getByRole('textbox', { name: /Executive Summary/ }), 'A better customer experience in four clear sentences.')
+    await user.type(screen.getByRole('textbox', { name: /Details of Core achievement and business impact/ }), 'Reduced service time by 30% and saved RMB 200,000.')
+    await user.type(screen.getByRole('textbox', { name: /How you demonstrate BD China culture/ }), 'Listened to users and delivered an end-to-end solution.')
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
     expect(fileInput).not.toBeNull()
     await user.upload(fileInput!, new File(['image'], 'project.png', { type: 'image/png' }))
+    const tagsInput = screen.getByRole('textbox', { name: /Tags you want to add/ })
+    await user.type(tagsInput, 'Customer, Innovation, Collaboration, Impact, Digital, Sixth')
+    expect(screen.getByRole('button', { name: 'Submit nomination' })).toBeDisabled()
+    expect(createIdea).not.toHaveBeenCalled()
+    await user.clear(tagsInput)
+    await user.type(tagsInput, 'Customer，Innovation, Collaboration, Impact, Digital, Customer')
+    expect(screen.getByRole('button', { name: 'Submit nomination' })).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'Submit nomination' }))
 
     await waitFor(() => expect(getOrCreateNominationTeam).toHaveBeenCalledWith(expect.objectContaining({
@@ -277,6 +295,7 @@ describe('ProjectShowcase', () => {
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
       teamId: 'personal-team',
       category: 'Customer Values',
+      tags: ['Customer', 'Innovation', 'Collaboration', 'Impact', 'Digital'],
       title: 'User',
     }))
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({

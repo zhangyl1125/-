@@ -7,6 +7,13 @@ export default defineConfig({
   resolve: {
     alias: [{ find: /^sockjs-client$/, replacement: 'sockjs-client/dist/sockjs.js' }],
   },
+  server: {
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8080' },
+      '/storage': { target: 'http://127.0.0.1:80' },
+      '/ws': { target: 'http://127.0.0.1:8080', ws: true },
+    },
+  },
   plugins: [
     react(),
     codecovVitePlugin({

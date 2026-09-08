@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   IconArrowUpRight,
   IconBulb,
@@ -7,7 +7,11 @@ import {
   IconUsersGroup,
   IconX,
 } from '@tabler/icons-react'
-import { Link } from 'react-router-dom'
+import { Avatar, Group, Menu, Text, UnstyledButton } from '@mantine/core'
+import { useAuthStore } from '../store/authStore'
+import { useLanguage } from '../contexts/LanguageContext'
+import { useAwardAccess } from '../hooks/useAwardAccess'
+import { Link, useLocation } from 'react-router-dom'
 import { AwardBrand } from '../components/Layout/AwardBrand'
 import { useTechBackground } from '../hooks/useTechBackground'
 import './LandingPage.css'
@@ -21,17 +25,31 @@ const programIcons = [
 const landingVideoSrc = '/media/tech-blue-loop.mp4'
 const landingPosterSrc = '/media/tech-blue-poster.jpg'
 
-export function LandingPage({ authenticated = false }: { authenticated?: boolean }) {
+export function LandingPage({ children }: { children?: ReactNode }) {
+  const { user, logout } = useAuthStore()
+  const { language, toggleLanguage, t } = useLanguage()
+  const { canReview, canManage } = useAwardAccess()
+  const { pathname, hash } = useLocation()
+  const showHero = pathname === '/' || pathname === '/overview'
+
   const [menuOpen, setMenuOpen] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
   const backdropRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const entryPoints = [
-    { label: 'Discover', to: authenticated ? '/overview' : '/login?redirect=/overview' },
-    { label: 'Nominate', to: authenticated ? '/nominate' : '/login?redirect=/nominate' },
-    { label: 'Vote', to: authenticated ? '/projects' : '/login?redirect=/projects' },
-  ] as const
-  const startPath = authenticated ? '/overview' : '/login'
+    { label: t('sidebar.overview'), to: '/#overview', active: showHero },
+    { label: t('sidebar.nomination'), to: '/nominate', active: pathname === '/nominate' },
+    { label: t('sidebar.projectOverview'), to: '/projects', active: pathname === '/projects' },
+  ]
+
+  useEffect(() => {
+    if (hash === '#overview' || pathname === '/overview') {
+      document.getElementById('overview')?.scrollIntoView({ behavior: 'instant' })
+    } else {
+      window.scrollTo(0, 0)
+    }
+    setMenuOpen(false)
+  }, [pathname, hash])
 
   useTechBackground(backdropRef, videoRef)
 
@@ -89,10 +107,11 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
         <AwardBrand inverse />
 
         <nav className="award-landing__nav" aria-label="Main navigation">
-          {entryPoints.map((item, index) => (
+          {entryPoints.map((item) => (
             <Link
-              className={index === 0 ? 'award-landing__nav-link is-active' : 'award-landing__nav-link'}
+              className={item.active ? 'award-landing__nav-link is-active' : 'award-landing__nav-link'}
               to={item.to}
+              aria-current={item.active ? 'page' : undefined}
               key={item.label}
             >
               {item.label}
@@ -100,10 +119,27 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
           ))}
         </nav>
 
-        <Link className="award-landing__sign-in" to={startPath}>
-          Sign in
-          <IconArrowUpRight aria-hidden="true" size={15} stroke={1.8} />
-        </Link>
+        <Group className="award-landing__account" gap="sm" wrap="nowrap">
+          <UnstyledButton onClick={toggleLanguage} aria-label={language === 'zh' ? '切换到英文' : 'Switch to Chinese'}>
+            <Text size="sm" fw={600}>{language === 'zh' ? '中' : 'EN'}</Text>
+          </UnstyledButton>
+          {user && <Menu shadow="md" width={220}>
+            <Menu.Target>
+              <UnstyledButton aria-label={user.name}>
+                <Group gap="sm" wrap="nowrap">
+                  <Avatar src={user.avatar} size="sm" radius="xl" />
+                  <Text className="dp-header-user-copy" size="sm" fw={500}>{user.name}</Text>
+                </Group>
+              </UnstyledButton>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {canReview && <Menu.Item component={Link} to="/awards">{canManage ? (language === 'zh' ? '评选管理' : 'Award management') : (language === 'zh' ? '组委会评分' : 'Committee scoring')}</Menu.Item>}
+              {canManage && <Menu.Item component={Link} to="/admin/users">{t('sidebar.manageUsers')}</Menu.Item>}
+              <Menu.Item component={Link} to="/profile">{t('header.profile')}</Menu.Item>
+              <Menu.Item color="red" onClick={() => void logout()}>{t('header.logout')}</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>}
+        </Group>
 
         <button
           className="award-landing__menu-toggle"
@@ -132,14 +168,12 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
                 <IconArrowUpRight aria-hidden="true" size={17} />
               </Link>
             ))}
-            <Link className="award-landing__mobile-sign-in" to={startPath} onClick={() => setMenuOpen(false)}>
-              Sign in
-            </Link>
+
           </nav>
         </>
       ) : null}
 
-      <main className="award-landing__hero">
+      {showHero && <section className="award-landing__hero">
         <div className="award-landing__program-mark award-landing__reveal" style={{ '--delay': '80ms' } as CSSProperties}>
           <div className="award-landing__track-marks" aria-hidden="true">
             {programIcons.map(({ label, icon: TrackIcon }) => (
@@ -152,21 +186,32 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
         </div>
 
         <h1 className="award-landing__headline">
-          <span>Recognize the work</span>
-          <span>that moves us forward.</span>
+          <span>2026 BDCN</span>
+          <span>Digital Pioneer Award</span>
         </h1>
 
         <p className="award-landing__subhead award-landing__reveal" style={{ '--delay': '360ms' } as CSSProperties}>
-          Nominate the people turning customer insight, bold ideas, and shared effort into meaningful progress.
+          Recognize people who turn customer insight, bold ideas, and shared effort into meaningful progress and business values.
         </p>
 
         <Link
           className="award-landing__cta award-landing__reveal"
           style={{ '--delay': '470ms' } as CSSProperties}
-          to={startPath}
+          to="/#overview"
+          onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+            event.preventDefault()
+            document.getElementById('overview')?.scrollIntoView({
+              behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+            })
+          }}
         >
           <span>Get Started</span>
         </Link>
+      </section>}
+
+      <main id={showHero ? 'overview' : 'award-content'} className="award-landing__content">
+        {children}
       </main>
 
     </div>

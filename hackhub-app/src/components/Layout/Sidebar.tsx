@@ -2,19 +2,20 @@ import { NavLink } from '@mantine/core'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { PermissionService } from '../../utils/permissions'
+import { useAwardAccess } from '../../hooks/useAwardAccess'
 import { useLanguage } from '../../contexts/LanguageContext'
 
 export function Sidebar({ horizontal = false, onNavigate }: { horizontal?: boolean; onNavigate?: () => void }) {
   const { pathname } = useLocation()
   const { user } = useAuthStore()
   const { t, language } = useLanguage()
-  const participant = user?.role === 'participant'
+  const { canReview, canManage } = useAwardAccess()
   const items = [
     { label: t('sidebar.overview'), path: '/overview' },
     { label: t('sidebar.nomination'), path: '/nominate' },
-    ...(!participant ? [{ label: language === 'zh' ? '评选管理' : 'Award management', path: '/awards' }] : []),
+    ...(canManage ? [{ label: language === 'zh' ? '评选管理' : 'Award management', path: '/awards' }] : []),
     { label: t('sidebar.projectOverview'), path: '/projects' },
-    ...(participant ? [{ label: language === 'zh' ? '组委会评分' : 'Committee scoring', path: '/committee' }] : []),
+    ...(canReview && !canManage ? [{ label: language === 'zh' ? '组委会评分' : 'Committee scoring', path: '/committee' }] : []),
     ...(user && (PermissionService.canManageUsers(user) || user.role === 'manager')
       ? [{ label: PermissionService.canManageUsers(user) ? t('sidebar.manageUsers') : t('sidebar.manageMembers'), path: '/admin/users' }] : []),
   ]

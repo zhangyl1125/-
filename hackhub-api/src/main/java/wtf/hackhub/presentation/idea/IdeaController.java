@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import wtf.hackhub.application.idea.*;
 import wtf.hackhub.domain.Comment;
@@ -57,6 +58,7 @@ public class IdeaController {
 			@ApiResponse(responseCode = "400", description = "Validation failed"),
 			@ApiResponse(responseCode = "401", description = "Not authenticated")})
 	@PostMapping("/api/v1/hackathons/{hackathonId}/ideas")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	@ResponseStatus(HttpStatus.CREATED)
 	public IdeaResponse create(@PathVariable UUID hackathonId, @Valid @RequestBody CreateIdeaRequest req,
 			@AuthenticationPrincipal UUID userId) {

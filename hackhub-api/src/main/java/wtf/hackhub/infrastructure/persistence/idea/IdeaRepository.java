@@ -10,5 +10,7 @@ import java.util.UUID;
 
 public interface IdeaRepository extends JpaRepository<Idea, UUID> {
 	Page<Idea> findByHackathonIdOrderByCreatedAtDesc(UUID hackathonId, Pageable pageable);
+	Page<Idea> findByHackathonIdAndStatusNotOrderByCreatedAtDesc(UUID hackathonId, Idea.Status status,
+			Pageable pageable);
 	List<Idea> findAllByHackathonId(UUID hackathonId);
 }
