@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { StorageService } from './storageService'
+import { StorageService, MAX_UPLOAD_BYTES, validatePersonalPhoto } from './storageService'
 
 vi.mock('../lib/apiClient', () => ({
   api: {
@@ -68,6 +68,30 @@ describe('StorageService', () => {
       const file = new File(['content'], 'photo.jpg', { type: 'image/jpeg' })
       await expect(StorageService.uploadFile(file, 'avatars', 'avatars/u-1')).rejects.toThrow('Upload failed')
     })
+  })
+
+  it('validates photo sizes at the exact 50 MB boundary and supported types', () => {
+    const file = new File(['image'], 'photo.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: MAX_UPLOAD_BYTES, configurable: true })
+    expect(validatePersonalPhoto(file)).toBeNull()
+    Object.defineProperty(file, 'size', { value: MAX_UPLOAD_BYTES + 1 })
+    expect(validatePersonalPhoto(file)).toContain('50 MB')
+    expect(validatePersonalPhoto(new File([], 'empty.png', { type: 'image/png' }))).toContain('empty')
+    expect(validatePersonalPhoto(new File(['data'], 'file.pdf', { type: 'application/pdf' }))).toContain('JPG')
+  })
+
+  it('blocks oversize uploads before sending any network request', async () => {
+    global.fetch = vi.fn()
+    const file = new File(['image'], 'photo.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: MAX_UPLOAD_BYTES + 1 })
+    await expect(StorageService.uploadFile(file, 'project-attachments', 'nominations')).rejects.toThrow('50 MB')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('explains proxy 413 errors even when the response is HTML', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 413, statusText: 'Request Entity Too Large' })
+    await expect(StorageService.uploadFile(new File(['image'], 'photo.png'), 'project-attachments', 'nominations'))
+      .rejects.toThrow('If your file is smaller')
   })
 
   describe('uploadTeamFile', () => {

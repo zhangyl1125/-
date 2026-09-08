@@ -1,5 +1,18 @@
 import { api } from '../lib/apiClient'
 
+// Keep aligned with StoragePort.MAX_FILE_SIZE_BYTES and Spring multipart limits.
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+export const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp'
+export const PHOTO_UPLOAD_HINT = 'JPG, PNG or WebP; up to 50 MB per photo.'
+
+export function validatePersonalPhoto(file: File | null): string | null {
+  if (!file) return null
+  if (file.size === 0) return 'The selected photo is empty. Please choose another photo.'
+  if (file.size > MAX_UPLOAD_BYTES) return 'Photo exceeds 50 MB. Please choose a smaller photo.'
+  if (!PHOTO_ACCEPT.split(',').includes(file.type)) return 'Please choose a JPG, PNG or WebP photo.'
+  return null
+}
+
 export interface UploadResult {
   key: string
   url: string
@@ -18,6 +31,7 @@ export class StorageService {
     bucket: StorageBucket,
     prefix: string
   ): Promise<UploadResult> {
+    if (file.size > MAX_UPLOAD_BYTES) throw new Error('File exceeds 50 MB. Please choose a smaller file.')
     const form = new FormData()
     form.append('file', file)
     form.append('prefix', prefix)
@@ -34,6 +48,9 @@ export class StorageService {
       credentials: 'include',
     })
 
+    if (res.status === 413) {
+      throw new Error('Upload size limit exceeded. The maximum file size is 50 MB. If your file is smaller, please contact the administrator to check the upload limit.')
+    }
     if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`)
     return res.json()
   }

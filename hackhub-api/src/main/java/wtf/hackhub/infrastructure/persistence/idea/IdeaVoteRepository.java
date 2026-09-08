@@ -12,6 +12,7 @@ public interface IdeaVoteRepository extends JpaRepository<IdeaVote, UUID> {
 	Optional<IdeaVote> findByIdeaIdAndUserId(UUID ideaId, UUID userId);
 	boolean existsByIdeaIdAndUserId(UUID ideaId, UUID userId);
 	long countByIdeaId(UUID ideaId);
+	List<IdeaVote> findAllByUserId(UUID userId);
 
 	@Query(value = """
 			SELECT v.* FROM idea_votes v

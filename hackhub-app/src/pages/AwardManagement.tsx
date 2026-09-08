@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { Alert, Badge, Button, Card, Container, Group, Select, Stack, Text, Title } from '@mantine/core'
+import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Alert, Badge, Button, Card, Container, Group, Modal, TextInput, Select, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useAuthStore } from '../store/authStore'
 import { HackathonService, type Hackathon } from '../services/hackathonService'
@@ -16,6 +16,10 @@ import './DigitalPioneer.css'
 
 export function AwardManagement() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Hackathon | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const { user } = useAuthStore()
   const { language } = useLanguage()
   const [campaigns, setCampaigns] = useState<Hackathon[]>([])
@@ -25,7 +29,9 @@ export function AwardManagement() {
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const isAdmin = user?.role === 'admin'
   const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const visibleCampaigns = campaigns.filter((item) => `${item.title} ${item.description ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   const campaign = campaigns.find((item) => item.id === id)
 
   useEffect(() => {
@@ -83,6 +89,26 @@ export function AwardManagement() {
     }
   }
 
+  const requestDelete = (item: Hackathon) => {
+    setDeleteError('')
+    setDeleteTarget(item)
+  }
+
+  const deleteCampaign = async () => {
+    if (!deleteTarget || busy || !isAdmin) return
+    setBusy(true)
+    setDeleteError('')
+    try {
+      await HackathonService.deleteHackathon(deleteTarget.id)
+      setCampaigns((current) => current.filter((item) => item.id !== deleteTarget.id))
+      setDeleteTarget(null)
+      if (id === deleteTarget.id) navigate('/awards')
+      notifications.show({ title: 'Deleted', message: 'Award campaign deleted.', color: 'green' })
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : 'Unable to delete award campaign. Please try again.')
+    } finally { setBusy(false) }
+  }
+
   return (
     <Container size={1240} py="xl" className="dp-page dp-management-page">
       <Stack gap="xl">
@@ -93,9 +119,10 @@ export function AwardManagement() {
           </div>
           {canManage && <Button component={Link} to="/hackathons/create" className="dp-primary-button">Create award campaign</Button>}
         </Group>
+        {!id && <TextInput aria-label={language === 'zh' ? '搜索奖项' : 'Search awards'} placeholder={language === 'zh' ? '搜索奖项' : 'Search awards'} value={search} onChange={(event) => setSearch(event.currentTarget.value)} maw={420} />}
         {error && <Alert color="red" role="alert">{error}</Alert>}
         {loading ? <Text role="status">Loading award campaigns…</Text> : !id ? (
-          campaigns.length ? campaigns.map((item) => (
+          visibleCampaigns.length ? visibleCampaigns.map((item) => (
             <Card key={item.id} className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Group justify="space-between">
                 <div><Title order={3}>{canManage ? <Link className="dp-award-title-link" to={`/awards/${item.id}`}>{item.title}</Link> : item.title}</Title><Text c="dimmed" mt="xs">{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</Text></div>
@@ -104,6 +131,8 @@ export function AwardManagement() {
               <Group mt="lg">
                 <Button component={Link} to={`/hackathons/${item.id}/judge`}>Committee scoring</Button>
                 {canManage && <Button component={Link} to={`/hackathons/${item.id}/leaderboard`} variant="light">Scores & rankings</Button>}
+                {canManage && <Button component={Link} to={`/hackathons/${item.id}/edit`} variant="outline">Edit campaign & dates</Button>}
+                {isAdmin && <Button variant="subtle" color="red" onClick={() => requestDelete(item)}>Delete award</Button>}
               </Group>
             </Card>
           )) : <Text>No award campaigns are available{canManage ? '.' : ' for your committee account.'}</Text>
@@ -116,6 +145,7 @@ export function AwardManagement() {
                 <Button component={Link} to={`/hackathons/${id}/judge`}>Committee scoring</Button>
                 {canManage && <Button component={Link} to={`/hackathons/${id}/leaderboard`} variant="light">Scores & rankings</Button>}
                 {canManage && <Button component={Link} to={`/hackathons/${id}/edit`} variant="default">Edit campaign & dates</Button>}
+                {isAdmin && <Button variant="subtle" color="red" onClick={() => requestDelete(campaign)}>Delete award</Button>}
               </Group>
               {canManage && <Select mt="lg" maw={520} size="md" label="Campaign status" description="Running campaigns accept associate votes; completed campaigns close voting." value={campaign.status} disabled={busy}
                 data={[{ value: 'draft', label: 'Draft' }, { value: 'open', label: 'Open' }, { value: 'running', label: 'Running' }, { value: 'completed', label: 'Completed' }].map((option) => ({ ...option, label: language === 'zh' ? translateUiText(option.label) : option.label }))}
@@ -145,6 +175,17 @@ export function AwardManagement() {
           </>
         )}
       </Stack>
+      <Modal opened={!!deleteTarget} onClose={() => { if (!busy) setDeleteTarget(null) }} title="Delete award campaign?" centered closeOnClickOutside={!busy} closeOnEscape={!busy} withCloseButton={!busy}>
+        <Stack>
+          <Text fw={700}>{deleteTarget?.title}</Text>
+          <Text>This permanently deletes the campaign and its nominations, votes, committee assignments, and scores. This cannot be undone.</Text>
+          {deleteError && <Alert color="red" role="alert">{deleteError}</Alert>}
+          <Group justify="flex-end">
+            <Button variant="default" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button color="red" loading={busy} onClick={() => void deleteCampaign()}>Confirm deletion</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   )
 }

@@ -45,6 +45,14 @@ public class UpdateHackathonUseCase {
 		return hackathonRepository.save(hackathon);
 	}
 
+	@Transactional
+	@PreAuthorize("hasRole('ADMIN')")
+	public void delete(UUID hackathonId) {
+		Hackathon hackathon = hackathonRepository.findById(hackathonId)
+				.orElseThrow(() -> new GetHackathonsUseCase.HackathonNotFoundException(hackathonId));
+		hackathonRepository.delete(hackathon);
+	}
+
 	public record Command(UUID hackathonId, String title, String description, Instant startDate, Instant endDate,
 			int maxTeamSize, int allowedParticipants, String rules, String bannerUrl, List<String> prizes,
 			List<String> tags) {

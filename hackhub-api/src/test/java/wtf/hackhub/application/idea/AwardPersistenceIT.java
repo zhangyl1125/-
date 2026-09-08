@@ -82,6 +82,24 @@ class AwardPersistenceIT extends PostgresIntegrationTest {
 						+ nominee + "\"}" + extra + "]");
 	}
 	@Test
+	void draft_award_accepts_individual_nomination_without_creating_a_team() throws Exception {
+		int teamsBefore = jdbc.queryForObject("SELECT count(*) FROM teams WHERE hackathon_id=?", Integer.class, award);
+		assertThat(jdbc.queryForObject("SELECT status FROM hackathons WHERE id=?", String.class, award))
+				.isEqualTo("draft");
+		var payload = json.createObjectNode().put("title", "Individual nominee").put("description", "Business impact")
+				.put("category", "Customer Values").put("status", "SUBMITTED")
+				.put("projectAttachments", "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + own + "\"}]");
+		var response = mvc.perform(post("/api/v1/hackathons/" + award + "/ideas").with(MockAuthHelper.asAdmin(admin))
+				.contentType(MediaType.APPLICATION_JSON).content(payload.toString()))
+				.andExpect(status().isCreated()).andReturn();
+		UUID id = UUID.fromString(json.readTree(response.getResponse().getContentAsString()).get("id").asText());
+		assertThat(jdbc.queryForObject("SELECT team_id FROM ideas WHERE id=?", UUID.class, id)).isNull();
+		assertThat(jdbc.queryForObject("SELECT status FROM ideas WHERE id=?", String.class, id)).isEqualTo("submitted");
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM teams WHERE hackathon_id=?", Integer.class, award))
+				.isEqualTo(teamsBefore);
+	}
+
+	@Test
 	void photo_bytes_are_in_minio_and_keys_and_authoritative_department_are_in_postgres() throws Exception {
 		byte[] png = Base64.getDecoder()
 				.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7ioAAAAASUVORK5CYII=");

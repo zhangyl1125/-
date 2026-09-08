@@ -155,6 +155,14 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void handles_multipart_limit_with_readable_size_hint() {
+		ProblemDetail p = handler.handleFileTooLarge(
+				new org.springframework.web.multipart.MaxUploadSizeExceededException(StoragePort.MAX_FILE_SIZE_BYTES));
+		assertThat(p.getStatus()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE.value());
+		assertThat(p.getDetail()).contains("50 MB");
+	}
+
+	@Test
 	void handles_invalid_bucket() {
 		ProblemDetail p = handler.handleInvalidBucket(new StorageController.InvalidBucketException("bad-bucket"));
 		assertThat(p.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());

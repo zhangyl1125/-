@@ -108,6 +108,13 @@ public class VoteIdeaUseCase {
 		voteRepository.deleteAll(selected);
 	}
 
+	/** Reset the signed-in user's entire ballot atomically, under the same voter lock as toggle. */
+	@Transactional
+	public void clearAll(UUID userId) {
+		profileRepository.findByIdForUpdate(userId).orElseThrow(() -> new ParticipantNotEligibleException(userId));
+		voteRepository.deleteAll(voteRepository.findAllByUserId(userId));
+	}
+
 	private static String track(Idea idea) {
 		return wtf.hackhub.domain.AwardTrack.normalize(idea.getCategory(), idea.getTags());
 	}

@@ -110,6 +110,13 @@ public class IdeaController {
 		return new VoteResponse(result.voted(), result.voteCount());
 	}
 
+	@Operation(summary = "Clear all votes belonging to the signed-in user")
+	@DeleteMapping("/api/v1/me/votes")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void clearMyVotes(@AuthenticationPrincipal UUID userId) {
+		voteIdeaUseCase.clearAll(userId);
+	}
+
 	@DeleteMapping("/api/v1/hackathons/{hackathonId}/votes")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void clearTrackVotes(@PathVariable UUID hackathonId, @RequestParam String category,

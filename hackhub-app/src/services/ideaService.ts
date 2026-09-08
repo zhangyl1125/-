@@ -141,6 +141,10 @@ export class IdeaService {
     return api.post(`/api/v1/ideas/${ideaId}/votes`)
   }
 
+  static async clearMyVotes(): Promise<void> {
+    return api.delete('/api/v1/me/votes')
+  }
+
   static async clearTrackVotes(hackathonId: string, category: string): Promise<void> {
     return api.delete(`/api/v1/hackathons/${hackathonId}/votes?category=${encodeURIComponent(category)}`)
   }

@@ -84,6 +84,29 @@ class SubmitIdeaUseCaseTest {
 	}
 
 	@Test
+	void normalizes_mixed_tag_separators_before_saving() {
+		stubValidSubmit();
+		when(ideaRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+		Idea result = useCase.execute("title", "desc", HACKATHON_ID, TEAM_ID, USER_ID, "AI",
+				List.of(" IoT、Digital Twin，AI,Impact、IoT、 ", "Cloud"));
+		assertThat(result.getTags()).containsExactly("IoT", "Digital Twin", "AI", "Impact", "Cloud");
+	}
+
+	@Test
+	void rejects_more_than_five_tags_on_create_and_update() {
+		stubValidSubmit();
+		List<String> tags = List.of("one、two，three,four、five、six");
+		assertThatThrownBy(() -> useCase.execute("title", "desc", HACKATHON_ID, TEAM_ID, USER_ID, "AI", tags))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("5 tags");
+		Idea existing = idea(USER_ID);
+		when(ideaRepository.findById(any())).thenReturn(Optional.of(existing));
+		assertThatThrownBy(() -> useCase.update(UUID.randomUUID(), USER_ID, "title", "desc", "AI", tags,
+				Idea.Status.SUBMITTED, null, null, null))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("5 tags");
+		verify(ideaRepository, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
 	void update_changes_fields() {
 		Idea existing = idea(USER_ID);
 		when(ideaRepository.findById(any())).thenReturn(Optional.of(existing));
@@ -220,6 +243,49 @@ class SubmitIdeaUseCaseTest {
 		assertThatThrownBy(
 				() -> useCase.update(ideaId, USER_ID, "Title", "Desc", "AI", List.of(), null, null, null, null))
 				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Track and nominee cannot change");
+	}
+
+	private void stubIndividualRequester(wtf.hackhub.domain.Profile.Role role, UUID orgId) {
+		Hackathon hackathon = new Hackathon("Award", "Digital Pioneer", Instant.now(),
+				Instant.now().plusSeconds(100), null, 4, 100, USER_ID, orgId);
+		assertThat(hackathon.getStatus()).isEqualTo(Hackathon.Status.DRAFT);
+		when(hackathonRepository.findById(HACKATHON_ID)).thenReturn(Optional.of(hackathon));
+		var requester = new wtf.hackhub.domain.Profile("manager@example.test", "Manager", "hash");
+		requester.changeRole(role);
+		when(profileRepository.findById(USER_ID)).thenReturn(Optional.of(requester));
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.EnumSource(value = wtf.hackhub.domain.Profile.Role.class, names = {"ADMIN", "MANAGER"})
+	void submits_individual_nomination_in_draft_award_without_a_team(wtf.hackhub.domain.Profile.Role role) {
+		stubIndividualRequester(role, null);
+		when(profileRepository.existsById(USER_ID)).thenReturn(true);
+		when(ideaRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+		String metadata = "[{\"type\":\"nomination\",\"nomineeUserId\":\"" + USER_ID + "\"}]";
+		Idea result = useCase.executeNomination("Nominee", "Impact", HACKATHON_ID, null, USER_ID,
+				"Customer Values", List.of("Digital"), Idea.Status.SUBMITTED, null, null, metadata);
+		assertThat(result.getTeamId()).isNull();
+		assertThat(result.getStatus()).isEqualTo(Idea.Status.SUBMITTED);
+		assertThat(result.getProjectAttachments()).isEqualTo(metadata);
+		org.mockito.Mockito.verifyNoInteractions(teamRepository, teamMemberRepository);
+	}
+
+	@Test
+	void individual_nomination_still_requires_manager_permissions() {
+		stubIndividualRequester(wtf.hackhub.domain.Profile.Role.PARTICIPANT, null);
+		assertThatThrownBy(() -> useCase.executeNomination("Nominee", "Impact", HACKATHON_ID, null, USER_ID,
+				"Customer Values", List.of(), Idea.Status.SUBMITTED, null, null, null))
+				.isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
+		org.mockito.Mockito.verifyNoInteractions(ideaRepository, teamRepository, teamMemberRepository);
+	}
+
+	@Test
+	void individual_nomination_preserves_organization_membership_check() {
+		stubIndividualRequester(wtf.hackhub.domain.Profile.Role.MANAGER, UUID.randomUUID());
+		assertThatThrownBy(() -> useCase.executeNomination("Nominee", "Impact", HACKATHON_ID, null, USER_ID,
+				"Customer Values", List.of(), Idea.Status.SUBMITTED, null, null, null))
+				.isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
+		org.mockito.Mockito.verifyNoInteractions(ideaRepository, teamRepository, teamMemberRepository);
 	}
 
 }

@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MantineProvider } from '@mantine/core'
 import { MemoryRouter } from 'react-router-dom'
 import { ProjectShowcase } from './ProjectShowcase'
 
-const { createIdea, createTeam, getOrCreateNominationTeam, getComments, addComment, getIdeas, updateIdea, uploadFile, voteIdea, currentUser, listNominees } = vi.hoisted(() => ({
+const { createIdea, createTeam, getOrCreateNominationTeam, getComments, addComment, getIdeas, getHackathons, updateIdea, uploadFile, voteIdea, clearMyVotes, currentUser, listNominees } = vi.hoisted(() => ({
   currentUser: { id: 'user-1', email: 'user@example.com', name: 'User', role: 'participant' as 'participant' | 'manager' | 'admin', skills: [] },
   listNominees: vi.fn().mockResolvedValue({ content: [{ id: 'nominee-2', name: 'Named Associate', email: 'associate@example.com' }] }),
+  getHackathons: vi.fn().mockResolvedValue({ content: [{ id: 'hackathon-1', title: 'Spring 2026 Hackathon', status: 'running' }] }),
   createIdea: vi.fn().mockResolvedValue({ id: 'new-idea' }),
   getOrCreateNominationTeam: vi.fn().mockResolvedValue({ id: 'personal-team', name: 'User nomination' }),
   getComments: vi.fn().mockResolvedValue([{ id: 'comment-1', ideaId: 'idea-1', userId: 'reviewer', content: 'The customer impact is well documented.', createdAt: '2026-09-01T00:00:00Z' }]),
@@ -33,6 +34,7 @@ const { createIdea, createTeam, getOrCreateNominationTeam, getComments, addComme
   }),
   updateIdea: vi.fn().mockResolvedValue({ id: 'new-idea' }),
   uploadFile: vi.fn().mockResolvedValue({ url: '/image.jpg', key: 'projects/personal-team/image.jpg' }),
+  clearMyVotes: vi.fn().mockResolvedValue(undefined),
   voteIdea: vi.fn().mockResolvedValue({ voted: true, voteCount: 3 }),
 }))
 
@@ -45,6 +47,7 @@ vi.stubGlobal('ResizeObserver', class {
 })
 
 vi.mock('../store/authStore', () => ({ useAuthStore: () => ({ user: currentUser }) }))
+vi.mock('../contexts/LanguageContext', () => ({ useLanguage: () => ({ language: 'en' }) }))
 vi.mock('../lib/apiClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/apiClient')>()
   return { ...actual, api: { ...actual.api, get: listNominees } }
@@ -52,9 +55,7 @@ vi.mock('../lib/apiClient', async (importOriginal) => {
 
 vi.mock('../services/hackathonService', () => ({
   HackathonService: {
-    getHackathons: vi.fn().mockResolvedValue({
-      content: [{ id: 'hackathon-1', title: 'Spring 2026 Hackathon', status: 'running' }],
-    }),
+    getHackathons,
   },
 }))
 
@@ -62,6 +63,7 @@ vi.mock('../services/ideaService', () => ({
   IdeaService: {
     getIdeas,
     voteIdea,
+    clearMyVotes,
     createIdea,
     getComments,
     addComment,
@@ -82,7 +84,8 @@ vi.mock('../services/profileService', () => ({
   ProfileService: { getProfile: vi.fn().mockResolvedValue({ name: 'Reviewer' }) },
 }))
 
-vi.mock('../services/storageService', () => ({
+vi.mock('../services/storageService', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../services/storageService')>(),
   StorageService: {
     getPresignedUrl: vi.fn(),
     uploadFile,
@@ -107,7 +110,7 @@ describe('ProjectShowcase', () => {
     expect(await screen.findByText('Customer Portal Renewal')).toBeInTheDocument()
     expect(screen.queryByText('Under Construction')).not.toBeInTheDocument()
     expect(screen.queryByText(/This page is currently under development/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'New nomination' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New nomination' })).not.toBeInTheDocument()
     expect(screen.queryByText(/votes available/)).not.toBeInTheDocument()
     expect(screen.getAllByText('Customer Values').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Innovation Breakthrough').length).toBeGreaterThan(0)
@@ -117,7 +120,7 @@ describe('ProjectShowcase', () => {
     expect(screen.queryByText('Winners Only')).not.toBeInTheDocument()
   })
 
-  it('shows the corresponding comments in nomination details', async () => {
+  it('shows nomination details without loading or offering comments', async () => {
     const user = userEvent.setup()
     render(
       <MantineProvider>
@@ -128,11 +131,12 @@ describe('ProjectShowcase', () => {
     )
 
     await screen.findByText('Customer Portal Renewal')
-    await user.click(screen.getByRole('button', { name: 'Details & comments' }))
+    await user.click(screen.getByRole('button', { name: 'View details' }))
     expect(await screen.findByRole('heading', { name: 'Nominee' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Tags' })).toBeInTheDocument()
-    expect(await screen.findByText('The customer impact is well documented.')).toBeInTheDocument()
-    expect(getComments).toHaveBeenCalledWith('idea-1')
+    expect(screen.queryByText('The customer impact is well documented.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Add a comment' })).not.toBeInTheDocument()
+    expect(getComments).not.toHaveBeenCalled()
   })
 
   it('requires a track choice before revealing the nomination form', async () => {
@@ -214,6 +218,89 @@ describe('ProjectShowcase', () => {
     const votedButton = await screen.findByRole('button', { name: 'Voted, 3 votes' })
     expect(votedButton.closest('.dp-project-card')).toHaveAttribute('data-voted', 'true')
     expect(screen.getByText('Voted', { selector: '.dp-vote-stamp span' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'My votes (1)' }))
+    expect(within(await screen.findByRole('dialog')).getByText('Customer Portal Renewal')).toBeInTheDocument()
+  })
+
+  it('keeps votes visible across filters and removes them from the cart and card together', async () => {
+    const user = userEvent.setup()
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await user.click(await screen.findByRole('button', { name: 'Vote, 2 votes' }))
+    await user.type(screen.getByPlaceholderText('Search nominees'), 'No matching nominee')
+    expect(screen.queryByText('Customer Portal Renewal')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'My votes (1)' }))
+    const cart = screen.getByRole('dialog')
+    expect(within(cart).getByText('Customer Portal Renewal')).toBeInTheDocument()
+    voteIdea.mockResolvedValueOnce({ voted: false, voteCount: 2 })
+    await user.click(within(cart).getByRole('button', { name: 'Remove vote for Customer Portal Renewal' }))
+    expect(await within(cart).findByText('No votes yet')).toBeInTheDocument()
+    await user.click(within(cart).getByRole('button', { name: 'Close my votes' }))
+    await user.clear(screen.getByPlaceholderText('Search nominees'))
+    expect(await screen.findByRole('button', { name: 'Vote, 2 votes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'My votes (0)' })).toBeInTheDocument()
+  })
+
+  it('keeps the cart open while voting on the candidate list', async () => {
+    const user = userEvent.setup()
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await screen.findByRole('button', { name: 'Vote, 2 votes' })
+    await user.click(screen.getByRole('button', { name: 'My votes (0)' }))
+    const cart = screen.getByRole('dialog')
+    expect(cart).toHaveAttribute('aria-modal', 'false')
+    await user.click(screen.getByRole('button', { name: 'Vote, 2 votes' }))
+    expect(await within(cart).findByText('Customer Portal Renewal')).toBeInTheDocument()
+    voteIdea.mockResolvedValueOnce({ voted: false, voteCount: 2 })
+    await user.click(screen.getByRole('button', { name: 'Voted, 3 votes' }))
+    expect(await within(cart).findByText('No votes yet')).toBeInTheDocument()
+    expect(cart).toBeInTheDocument()
+  })
+
+  it('clears the whole cart, retains it on failure, and lets the user vote again', async () => {
+    const user = userEvent.setup()
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await user.click(await screen.findByRole('button', { name: 'Vote, 2 votes' }))
+    await user.click(screen.getByRole('button', { name: 'My votes (1)' }))
+    const cart = screen.getByRole('dialog')
+    clearMyVotes.mockRejectedValueOnce(new Error('Unable to clear votes. Please try again.'))
+    await user.click(within(cart).getByRole('button', { name: 'Clear all' }))
+    expect(await within(cart).findByRole('alert')).toHaveTextContent('Unable to clear votes')
+    expect(within(cart).getByText('Customer Portal Renewal')).toBeInTheDocument()
+    await user.click(within(cart).getByRole('button', { name: 'Clear all' }))
+    expect(await within(cart).findByText('No votes yet')).toBeInTheDocument()
+    expect(within(cart).getByRole('button', { name: 'Clear all' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Vote, 2 votes' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Vote, 2 votes' }))
+    expect(await within(cart).findByText('Customer Portal Renewal')).toBeInTheDocument()
+  })
+
+  it('retains a vote and displays the rule when removal is rejected', async () => {
+    const user = userEvent.setup()
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await user.click(await screen.findByRole('button', { name: 'Vote, 2 votes' }))
+    await user.click(screen.getByRole('button', { name: 'My votes (1)' }))
+    const cart = screen.getByRole('dialog')
+    voteIdea.mockRejectedValueOnce(new Error('Remove a same-department vote first.'))
+    await user.click(within(cart).getByRole('button', { name: 'Remove vote for Customer Portal Renewal' }))
+    expect(await within(cart).findByRole('alert')).toHaveTextContent('Remove a same-department vote first.')
+    expect(within(cart).getByText('Customer Portal Renewal')).toBeInTheDocument()
+    expect(within(cart).getByRole('heading', { name: 'My votes (1)' })).toBeInTheDocument()
+  })
+
+  it('splits legacy combined tags into separate badges and filter options', async () => {
+    getIdeas.mockResolvedValueOnce({ content: [{
+      id: 'idea-1', title: 'Legacy tags', description: 'Combined tags', teamId: 'team-1',
+      createdBy: 'user-1', category: 'AI', tags: ['IoT、Digital Twin，Cloud、IoT、'],
+      attachments: [], projectAttachments: [], votes: 0, userHasVoted: false,
+      status: 'submitted', createdAt: '', updatedAt: '',
+    }] })
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await screen.findByText('Legacy tags')
+    const tags = document.querySelector('.dp-nomination-tags') as HTMLElement
+    expect(within(tags).getByText('IoT')).toBeInTheDocument()
+    expect(within(tags).getByText('Digital Twin')).toBeInTheDocument()
+    expect(screen.getByText('+1')).toBeInTheDocument()
+    await userEvent.click(screen.getByPlaceholderText('Filter by tag'))
+    expect(screen.getByRole('option', { name: 'Cloud' })).toBeInTheDocument()
   })
 
   it('presents nomination as an individual three-track flow without team controls', async () => {
@@ -261,8 +348,9 @@ describe('ProjectShowcase', () => {
     }
   })
 
-  it('atomically submits the complete nomination after its photo upload' , async () => {
+  it('submits an individual nomination in a draft award without creating a team' , async () => {
     currentUser.role = 'admin'
+    getHackathons.mockResolvedValueOnce({ content: [{ id: 'hackathon-1', title: '2026 Award', status: 'draft' }] })
     const user = userEvent.setup()
     render(
       <MantineProvider>
@@ -278,22 +366,30 @@ describe('ProjectShowcase', () => {
     await user.type(screen.getByRole('textbox', { name: /How you demonstrate BD China culture/ }), 'Listened to users and delivered an end-to-end solution.')
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
     expect(fileInput).not.toBeNull()
+    const oversized = new File(['image'], 'large.png', { type: 'image/png' })
+    Object.defineProperty(oversized, 'size', { value: 50 * 1024 * 1024 + 1 })
+    await user.upload(fileInput!, oversized)
+    expect(screen.getByText('Photo exceeds 50 MB. Please choose a smaller photo.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit nomination' })).toBeDisabled()
+    expect(uploadFile).not.toHaveBeenCalled()
     await user.upload(fileInput!, new File(['image'], 'project.png', { type: 'image/png' }))
+    expect(screen.queryByText('Photo exceeds 50 MB. Please choose a smaller photo.')).not.toBeInTheDocument()
     const tagsInput = screen.getByRole('textbox', { name: /Tags you want to add/ })
-    await user.type(tagsInput, 'Customer, Innovation, Collaboration, Impact, Digital, Sixth')
+    await user.type(tagsInput, 'Customer、Innovation，Collaboration, Impact、Digital、Sixth、')
     expect(screen.getByRole('button', { name: 'Submit nomination' })).toBeDisabled()
     expect(createIdea).not.toHaveBeenCalled()
     await user.clear(tagsInput)
-    await user.type(tagsInput, 'Customer，Innovation, Collaboration, Impact, Digital, Customer')
+    await user.type(tagsInput, 'Customer，Innovation、Collaboration, Impact、Digital、Customer、')
     expect(screen.getByRole('button', { name: 'Submit nomination' })).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'Submit nomination' }))
 
-    await waitFor(() => expect(getOrCreateNominationTeam).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'User nomination',
-      hackathonId: 'hackathon-1',
-    }), 'user-1'))
+    await waitFor(() => expect(createIdea).toHaveBeenCalled())
+    expect(getOrCreateNominationTeam).not.toHaveBeenCalled()
+    expect(createTeam).not.toHaveBeenCalled()
+    expect(createIdea.mock.calls[0][0]).not.toHaveProperty('teamId')
+    expect(uploadFile).toHaveBeenCalledWith(expect.any(File), 'project-attachments', 'nominations/hackathon-1/user-1')
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
-      teamId: 'personal-team',
+      hackathonId: 'hackathon-1',
       category: 'Customer Values',
       tags: ['Customer', 'Innovation', 'Collaboration', 'Impact', 'Digital'],
       title: 'User',

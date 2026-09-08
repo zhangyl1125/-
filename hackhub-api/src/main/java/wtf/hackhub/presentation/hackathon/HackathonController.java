@@ -149,6 +149,14 @@ public class HackathonController {
 		return HackathonResponse.from(joinHackathonUseCase.execute(req.registrationKey()));
 	}
 
+	@Operation(summary = "Delete an award campaign and its associated records")
+	@PreAuthorize("hasRole('ADMIN')")
+	@DeleteMapping("/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void delete(@PathVariable UUID id) {
+		updateHackathonUseCase.delete(id);
+	}
+
 	// ── DTOs ──────────────────────────────────────────────────────────────────
 
 	public record HackathonResponse(UUID id, String title, String description, Instant startDate, Instant endDate,

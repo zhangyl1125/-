@@ -53,7 +53,8 @@ class VoteIdeaUseCaseTest {
 		});
 		when(votes.findByIdeaIdAndUserId(any(), any()))
 				.thenAnswer(c -> Optional.ofNullable(ballot.get(c.getArgument(0))));
-		when(votes.findAllByUserIdAndHackathonId(any(), any())).thenAnswer(c -> new ArrayList<>(ballot.values()));
+		when(votes.findAllByUserIdAndHackathonId(any(), any())).thenAnswer(c -> ballot.values().stream()
+				.filter(v -> nominations.get(v.getIdeaId()).getHackathonId().equals(c.getArgument(1))).toList());
 		when(votes.save(any())).thenAnswer(c -> {
 			IdeaVote v = c.getArgument(0);
 			ballot.put(v.getIdeaId(), v);
@@ -65,6 +66,27 @@ class VoteIdeaUseCaseTest {
 		}).when(votes).delete(any());
 		when(votes.countByIdeaId(any())).thenAnswer(c -> ballot.containsKey(c.getArgument(0)) ? 1L : 0L);
 	}
+	@Test
+	void clear_all_reads_only_own_ballot_under_voter_lock() {
+		UUID own = nomination("BD/DPA-SRE3", "Customer Values");
+		UUID outside = nomination("BD/BA-AP", "Innovation Breakthrough");
+		var selected = List.of(new IdeaVote(own, voter), new IdeaVote(outside, voter));
+		when(votes.findAllByUserId(voter)).thenReturn(selected);
+		useCase.clearAll(voter);
+		var ordered = inOrder(profiles, votes);
+		ordered.verify(profiles).findByIdForUpdate(voter);
+		ordered.verify(votes).findAllByUserId(voter);
+		ordered.verify(votes).deleteAll(selected);
+		verifyNoInteractions(lock);
+	}
+
+	@Test
+	void clear_all_rejects_unknown_user_without_deleting() {
+		assertThatThrownBy(() -> useCase.clearAll(UUID.randomUUID()))
+				.isInstanceOf(VoteIdeaUseCase.ParticipantNotEligibleException.class);
+		verify(votes, never()).deleteAll(anyIterable());
+	}
+
 	@Test
 	void requires_outside_vote_before_first_own_vote() {
 		UUID own = nomination("BD/DPA-XYZ", "Customer Values");
@@ -152,6 +174,53 @@ class VoteIdeaUseCaseTest {
 		assertThat(VoteIdeaUseCase.departmentCode("BD/RMO")).isEqualTo("BD/RMO");
 		assertThat(VoteIdeaUseCase.normalizeIdentity("Mr. 朱一/ZHU Yi")).isEqualTo("yizhu");
 	}
+	@Test
+	void repeated_vote_toggles_without_duplicate_and_can_be_added_again() {
+		UUID target = nomination("BD/BA-AP", "Customer Values");
+		assertThat(useCase.execute(target, voter).voted()).isTrue();
+		assertThat(useCase.execute(target, voter).voted()).isFalse();
+		assertThat(ballot).isEmpty();
+		assertThat(useCase.execute(target, voter).voteCount()).isEqualTo(1);
+		assertThat(ballot).hasSize(1);
+	}
+
+	@Test
+	void independent_awards_do_not_share_quota() {
+		for (int i = 0; i < 4; i++)
+			useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter);
+		award = UUID.randomUUID();
+		assertThat(useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter).voted()).isTrue();
+		assertThat(ballot).hasSize(5);
+	}
+
+	@Test
+	void removing_from_two_outside_two_own_requires_removing_own_first() {
+		UUID outside = nomination("BD/BA-AP", "Customer Values");
+		useCase.execute(outside, voter);
+		useCase.execute(nomination("BD/BA-OTHER", "Customer Values"), voter);
+		UUID own = nomination("BD/DPA-SRE2", "Customer Values");
+		useCase.execute(own, voter);
+		useCase.execute(nomination("BD/DPA-SRE3", "Customer Values"), voter);
+		assertThatThrownBy(() -> useCase.execute(outside, voter)).hasMessageContaining("50%");
+		useCase.execute(own, voter);
+		assertThat(useCase.execute(outside, voter).voted()).isFalse();
+		assertThat(ballot).hasSize(2);
+	}
+
+	@Test
+	void clear_track_only_removes_votes_in_selected_category() {
+		UUID value = nomination("BD/BA-AP", "Customer Values");
+		UUID collaboration = nomination("BD/BA-AP", "Collaboration");
+		useCase.execute(value, voter);
+		useCase.execute(collaboration, voter);
+		useCase.clearTrack(award, voter, "Customer Values");
+		verify(votes).deleteAll(argThat(selected -> {
+			var ids = new ArrayList<UUID>();
+			selected.forEach(vote -> ids.add(vote.getIdeaId()));
+			return ids.equals(List.of(value));
+		}));
+	}
+
 	@Test
 	void throws_for_unknown_idea() {
 		assertThatThrownBy(() -> useCase.execute(UUID.randomUUID(), voter))

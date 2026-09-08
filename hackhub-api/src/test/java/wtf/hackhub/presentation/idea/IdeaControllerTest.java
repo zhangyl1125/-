@@ -63,6 +63,19 @@ class IdeaControllerTest {
 	}
 
 	@Test
+	void clear_votes_uses_authenticated_user_only() throws Exception {
+		mvc.perform(delete("/api/v1/me/votes").param("userId", UUID.randomUUID().toString())
+				.with(MockAuthHelper.asParticipant(USER_ID))).andExpect(status().isNoContent());
+		verify(voteIdeaUseCase).clearAll(USER_ID);
+	}
+
+	@Test
+	void anonymous_cannot_clear_votes() throws Exception {
+		mvc.perform(delete("/api/v1/me/votes")).andExpect(status().isUnauthorized());
+		verifyNoInteractions(voteIdeaUseCase);
+	}
+
+	@Test
 	void list_ideas_returns_page() throws Exception {
 		when(getIdeasUseCase.listByHackathon(any(), any())).thenReturn(new PageImpl<>(List.of(idea())));
 		mvc.perform(get("/api/v1/hackathons/" + HACKATHON_ID + "/ideas").with(MockAuthHelper.asParticipant(USER_ID)))

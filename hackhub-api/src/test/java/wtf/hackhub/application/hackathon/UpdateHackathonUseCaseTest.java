@@ -33,6 +33,25 @@ class UpdateHackathonUseCaseTest {
 	}
 
 	@Test
+	void deletes_campaign_in_every_status() {
+		for (Hackathon.Status status : Hackathon.Status.values()) {
+			UUID id = UUID.randomUUID();
+			Hackathon existing = hackathon(id);
+			org.springframework.test.util.ReflectionTestUtils.setField(existing, "status", status);
+			when(hackathonRepository.findById(id)).thenReturn(Optional.of(existing));
+			useCase.delete(id);
+			org.mockito.Mockito.verify(hackathonRepository).delete(existing);
+		}
+	}
+
+	@Test
+	void delete_missing_campaign_throws() {
+		UUID id = UUID.randomUUID();
+		assertThatThrownBy(() -> useCase.delete(id)).isInstanceOf(GetHackathonsUseCase.HackathonNotFoundException.class);
+		org.mockito.Mockito.verify(hackathonRepository, org.mockito.Mockito.never()).delete(any(Hackathon.class));
+	}
+
+	@Test
 	void update_changes_title_and_description() {
 		UUID id = UUID.randomUUID();
 		Hackathon existing = hackathon(id);

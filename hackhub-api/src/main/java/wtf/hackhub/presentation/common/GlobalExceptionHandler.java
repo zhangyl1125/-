@@ -122,8 +122,9 @@ public class GlobalExceptionHandler {
 		return p;
 	}
 
-	@ExceptionHandler(StoragePort.FileTooLargeException.class)
-	public ProblemDetail handleFileTooLarge(StoragePort.FileTooLargeException ex) {
+	@ExceptionHandler({StoragePort.FileTooLargeException.class,
+			org.springframework.web.multipart.MaxUploadSizeExceededException.class})
+	public ProblemDetail handleFileTooLarge(Exception ex) {
 		ProblemDetail p = ProblemDetail.forStatus(HttpStatus.PAYLOAD_TOO_LARGE);
 		p.setType(URI.create("/errors/file-too-large"));
 		p.setTitle("File Too Large");

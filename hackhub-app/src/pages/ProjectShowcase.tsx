@@ -15,6 +15,7 @@ import {
   TextInput,
   SimpleGrid,
   Modal,
+  CloseButton,
   Center,
   Alert,
   Image,
@@ -37,6 +38,8 @@ import {
   IconInfoCircle,
   IconPhoto,
   IconCheck,
+  IconShoppingCart,
+  IconTrash,
 } from '@tabler/icons-react'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -50,14 +53,13 @@ import { PublicAwardService, type AwardSummary } from '../services/publicAwardSe
 import { IdeaService } from '../services/ideaService'
 import { OrganizationService } from '../services/organizationService'
 import { ProfileService } from '../services/profileService'
-import { StorageService } from '../services/storageService'
+import { StorageService, MAX_UPLOAD_BYTES, PHOTO_ACCEPT, PHOTO_UPLOAD_HINT, validatePersonalPhoto } from '../services/storageService'
 import { TeamService } from '../services/teamService'
 import { JudgingService } from '../services/judgingService'
 import {
   DIGITAL_PIONEER_TRACKS,
   normalizeDigitalPioneerTrack,
 } from '../config/digitalPioneer'
-import { NominationComments } from '../components/DigitalPioneer/NominationComments'
 import './DigitalPioneer.css'
 
 interface Project {
@@ -90,6 +92,7 @@ interface ProjectFilters {
   search: string
   category: string
   technology: string
+  department: string
 }
 
 interface ProjectUploadForm {
@@ -113,7 +116,9 @@ const emptyUploadForm = (): ProjectUploadForm => ({
 })
 
 const parseNominationTags = (value: string): string[] =>
-  [...new Set(value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))]
+  [...new Set(value.split(/[,，、]/).map((tag) => tag.trim()).filter(Boolean))]
+
+const tagHint = 'Add up to 5 tags, separated by 、, ， or commas (,).'
 
 export function ProjectShowcase({ nominationMode = false }: { nominationMode?: boolean }) {
   const navigate = useNavigate()
@@ -130,6 +135,10 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   const [loading, setLoading] = useState(true)
   const [confirmClearVotes, setConfirmClearVotes] = useState(false)
   const [clearingVotes, setClearingVotes] = useState(false)
+  const [cartOpened, setCartOpened] = useState(false)
+  const [voteError, setVoteError] = useState<string | null>(null)
+  const voteRequests = useRef(new Set<string>())
+  const clearingVotesRef = useRef(false)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [modalOpened, setModalOpened] = useState(false)
   const [nominees, setNominees] = useState<Array<{ id: string; name: string; email: string }>>([])
@@ -144,6 +153,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     search: '',
     category: '',
     technology: '',
+    department: '',
   })
 
   const loadProjects = useCallback(async () => {
@@ -157,7 +167,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           setHackathons(awards)
           const nominations = await Promise.all(awards.map((award) => getAllPages((page) => PublicAwardService.getNominations(award.id, page))))
           if (sequence !== loadSequence.current) return
-          setProjects(nominations.flat().map((nomination) => ({ ...nomination, team_members: [], user_vote: false })))
+          setProjects(nominations.flat().map((nomination) => ({ ...nomination, technologies: parseNominationTags(nomination.technologies.join(',')), team_members: [], user_vote: false })))
           return
         }
         const loadedHackathons = await getAllPages((page) => HackathonService.getHackathons(page, 100))
@@ -213,7 +223,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               team_members: teamMembers,
               hackathon_id: hackathon.id,
               category: normalizeDigitalPioneerTrack(idea.category, idea.tags ?? []),
-              technologies: idea.tags ?? [],
+              technologies: parseNominationTags((idea.tags ?? []).join(',')),
               github_url: idea.repositoryUrl ?? undefined,
               demo_url: idea.demoUrl ?? undefined,
               images: [...images, ...(idea.attachments ?? [])].filter(Boolean),
@@ -252,6 +262,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     setProjectImage(null)
     setSelectedProject(null)
     setModalOpened(false)
+    setCartOpened(false)
+    setVoteError(null)
     void loadProjects()
     return () => { loadSequence.current += 1 }
   }, [loadProjects])
@@ -279,6 +291,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
   const nominationTags = parseNominationTags(uploadForm.technologies)
   const tooManyTags = nominationTags.length > 5
+  const photoError = validatePersonalPhoto(projectImage)
 
   const handleProjectUpload = async () => {
     if (!user || !canNominate || uploading) return
@@ -293,8 +306,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       return
     }
 
+    if (photoError) {
+      notifications.show({ title: 'Invalid photo', message: photoError, color: 'orange' })
+      return
+    }
+
     if (tooManyTags) {
-      notifications.show({ title: 'Too many tags', message: 'Add up to 5 tags, separated by commas.', color: 'orange' })
+      notifications.show({ title: 'Too many tags', message: tagHint, color: 'orange' })
       return
     }
 
@@ -308,26 +326,15 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         `Details of Core Achievement and Business Impact (Including Financial Figures)\n${uploadForm.achievementImpact.trim()}`,
         `How You Demonstrate Bosch China Culture (Especially in Your Applied Category)\n${uploadForm.cultureDemonstration.trim()}`,
       ].join('\n\n')
-      const personalTeamName = `${user?.name ?? 'Digital Pioneer'} nomination`
-      // Ideas still accept a teamId in the existing API. For this individual award,
-      // the team record is only a compatibility container and is never exposed in the UI.
-      const team = await TeamService.getOrCreateNominationTeam({
-            name: personalTeamName,
-            description,
-            hackathonId: uploadForm.hackathonId,
-            skills: technologies,
-          }, user.id)
-
       const uploadedImage = await StorageService.uploadFile(
         projectImage,
         'project-attachments',
-        `projects/${team.id}`
+        `nominations/${uploadForm.hackathonId}/${user.id}`
       )
       await IdeaService.createIdea({
         title: nomineeName,
         description,
         hackathonId: uploadForm.hackathonId,
-        teamId: team.id,
         category: uploadForm.category.trim(),
         tags: technologies,
         status: 'submitted',
@@ -371,10 +378,14 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       return
     }
 
-    if (votingIds.has(projectId)) return
+    if (voteRequests.current.has(projectId) || clearingVotesRef.current) return
+    voteRequests.current.add(projectId)
+    const sequence = loadSequence.current
+    setVoteError(null)
     setVotingIds((current) => new Set(current).add(projectId))
     try {
       const result = await IdeaService.voteIdea(projectId)
+      if (sequence !== loadSequence.current) return
       setProjects(prev => prev.map(project => {
         if (project.id === projectId) {
           return {
@@ -389,19 +400,22 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         ? { ...project, user_vote: result.voted, votes: result.voteCount }
         : project)
 
-      notifications.show({
+      if (!cartOpened) notifications.show({
         title: result.voted ? 'Vote Recorded' : 'Vote Removed',
         message: result.voted ? 'Thank you for your vote!' : 'Your vote has been removed',
         color: 'green',
       })
     } catch (error) {
+      if (sequence !== loadSequence.current) return
+      setVoteError(error instanceof Error ? error.message : 'Failed to record vote')
       console.error('Error voting:', error)
-      notifications.show({
+      if (!cartOpened) notifications.show({
         title: 'Error',
         message: error instanceof Error ? error.message : 'Failed to record vote',
         color: 'red',
       })
     } finally {
+      voteRequests.current.delete(projectId)
       setVotingIds((current) => { const next = new Set(current); next.delete(projectId); return next })
     }
   }
@@ -426,8 +440,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       
       const matchesCategory = !filters.category || project.category === filters.category
       const matchesTechnology = !filters.technology || project.technologies.includes(filters.technology)
+      const matchesDepartment = !filters.department || project.nominee_org_code.split('-')[0] === filters.department
       
-      return matchesSearch && matchesCategory && matchesTechnology
+      return matchesSearch && matchesCategory && matchesTechnology && matchesDepartment
     })
   }, [projects, filters])
 
@@ -435,12 +450,39 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     () => [...new Set(projects.flatMap((project) => project.technologies))].sort(),
     [projects]
   )
+  const votedProjects = projects.filter((project) => project.user_vote)
+  const departments = useMemo(
+    () => [...new Set(projects.map((project) => project.nominee_org_code.split('-')[0]).filter(Boolean))].sort(),
+    [projects]
+  )
   const selectedNominationTrack = DIGITAL_PIONEER_TRACKS.find(
     (track) => track.value === uploadForm.category
   )
 
+  const clearAllVotes = async () => {
+    if (!user || clearingVotesRef.current || voteRequests.current.size > 0) return
+    clearingVotesRef.current = true
+    setClearingVotes(true)
+    setVoteError(null)
+    try {
+      await IdeaService.clearMyVotes()
+      setProjects((current) => current.map((project) => project.user_vote
+        ? { ...project, user_vote: false, votes: Math.max(0, project.votes - 1) }
+        : project))
+      setSelectedProject((project) => project?.user_vote
+        ? { ...project, user_vote: false, votes: Math.max(0, project.votes - 1) }
+        : project)
+    } catch (cause) {
+      setVoteError(cause instanceof Error ? cause.message : 'Unable to clear votes. Please try again.')
+    } finally {
+      clearingVotesRef.current = false
+      setClearingVotes(false)
+    }
+  }
+
   const clearTrackVotes = async () => {
-    if (!selectedProject || clearingVotes) return
+    if (!selectedProject || clearingVotesRef.current || voteRequests.current.size > 0) return
+    clearingVotesRef.current = true
     setClearingVotes(true)
     try {
       await IdeaService.clearTrackVotes(selectedProject.hackathon_id, selectedProject.category)
@@ -450,7 +492,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       notifications.show({ title: 'Votes reset', message: 'You can now select nominees again.', color: 'teal' })
     } catch {
       notifications.show({ title: 'Error', message: 'Unable to save changes. Please try again.', color: 'red' })
-    } finally { setClearingVotes(false) }
+    } finally { clearingVotesRef.current = false; setClearingVotes(false) }
   }
 
   const openProjectModal = (project: Project) => {
@@ -532,11 +574,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div>
                       <Title order={3}>{selectedNominationTrack.label}</Title>
                     </div>
-                    <Badge className="dp-selected-track" variant="light">
-                      <span>{selectedNominationTrack.shorthand}</span>
-                      <span aria-hidden="true"> · </span>
-                      <span>Selected</span>
-                    </Badge>
+
                   </Group>
                   <div className="dp-fieldset" translate="no" style={{ borderTop: 0, paddingTop: 0 }}>
                     <Grid gutter="md">
@@ -559,7 +597,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                         <FileInput
                           label="Personal Photo"
                           required
-                          accept="image/jpeg,image/png,image/webp"
+                          accept={PHOTO_ACCEPT}
+                          description={language === 'zh' ? '支持 JPG、PNG、WebP，单张照片大于 0 且不超过 50 MB。' : PHOTO_UPLOAD_HINT}
+                          error={photoError ? (language === 'zh' ? (projectImage?.size === 0 ? '照片为空，请重新选择。' : projectImage && projectImage.size > MAX_UPLOAD_BYTES ? '照片超过 50 MB，请选择较小的图片。' : '请选择 JPG、PNG 或 WebP 格式的照片。') : photoError) : null}
                           leftSection={<IconPhoto size={16} />}
                           value={projectImage}
                           onChange={setProjectImage}
@@ -632,23 +672,27 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       <div style={{ minWidth: 0 }}>
                         <TextInput
                           label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags you want to add</span></>}
-                          description="Add up to 5 tags, separated by commas."
-                          error={tooManyTags ? 'Add up to 5 tags, separated by commas.' : undefined}
+                          description={tagHint}
+                          error={tooManyTags ? tagHint : undefined}
                           value={uploadForm.technologies}
                           onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
                         />
+                        <Text size="xs" c={tooManyTags ? 'red' : 'dimmed'} mt={6} aria-live="polite">{nominationTags.length} / 5</Text>
+                        <Group gap={6} mt="xs" className="dp-nomination-tags">
+                          {nominationTags.map((tag) => <Badge key={tag} size="sm" variant="light" title={tag}>{tag}</Badge>)}
+                        </Group>
                       </div>
                     </div>
                   </div>
 
-                  {!canNominate && <Text size="sm" c="dimmed">{language === 'zh' ? '仅管理员和评选管理者可提交提名。' : 'Only administrators and award managers can submit nominations.'}</Text>}
+                  {!canNominate && <Text size="sm" c="dimmed">{language === 'zh' ? '仅管理员和评选管理者可提交报名。' : 'Only administrators and award managers can submit nominations.'}</Text>}
                   <Group justify="flex-end" align="center" pt="lg">
                     <Button
                       className="dp-primary-button"
                       rightSection={<IconArrowRight size={17} />}
                       onClick={() => void handleProjectUpload()}
                       loading={uploading}
-                      disabled={!canNominate || tooManyTags}
+                      disabled={!canNominate || tooManyTags || Boolean(photoError)}
                     >
                       Submit nomination
                     </Button>
@@ -662,7 +706,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   }
 
   return (
-    <Container size={1240} py={{ base: 'sm', md: 'lg' }} className="dp-page">
+    <Container size={1240} pt={{ base: 'sm', md: 'lg' }} className={`dp-page dp-voting-page${cartOpened ? ' dp-voting-page--cart-open' : ''}`}>
       <Stack gap="lg">
         {loadError && <Alert color="red" title="Unable to load nominations"><Button variant="subtle" onClick={() => void loadProjects()}>Retry</Button></Alert>}
         <div className="dp-selection-header">
@@ -670,15 +714,18 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
             <div>
               <h1 className="dp-section-title dp-selection-title">Meet this year&apos;s nominees</h1>
             </div>
-            <Button
-              leftSection={<IconUpload size={16} />}
-              onClick={() => navigate('/nominate')}
-              className="dp-primary-button"
-            >
-              New nomination
-            </Button>
           </Group>
         </div>
+
+        {user && <details className="dp-voting-rules">
+          <summary>{language === 'zh' ? '查看投票规则' : 'Voting rules'}</summary>
+          <ul>
+            <li>{language === 'zh' ? '每人每赛道最多4票，各赛道独立计算；每位候选人最多1票，再次点击即可取消。' : 'Up to 4 votes per person per category. Each nominee receives at most one of your votes; click again to remove it.'}</li>
+            <li>{language === 'zh' ? '每次投票或撤票后，至少50%的已投票须投给本部门之外。投1、2、3、4票时，至少分别有1、1、2、2票跨部门。' : 'After every vote or withdrawal, at least 50% must be outside your department: 1, 1, 2 or 2 outside votes for totals of 1, 2, 3 or 4.'}</li>
+            <li>{language === 'zh' ? '请先投跨部门候选人；撤回跨部门票受限时，请先撤回本部门票。可以不投满4票。' : 'Vote outside your department first. If an outside withdrawal is blocked, remove a same-department vote first. You do not have to use all 4 votes.'}</li>
+            <li>{language === 'zh' ? '投票账号和候选人须能唯一匹配BD名册，部门按Org.code中“-”前的部分识别，例如BD/DPA-SRE3属于BD/DPA。' : 'Voters and nominees must uniquely match the BD roster. Department is the Org.code prefix before “-”, e.g. BD/DPA-SRE3 belongs to BD/DPA.'}</li>
+          </ul>
+        </details>}
 
         <div className="dp-category-tabs" role="group" aria-label="Filter by award category">
           <UnstyledButton
@@ -709,9 +756,9 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         {!nominationMode && (
         <>
         <Card className="dp-filter-shell" p="sm">
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
               <TextInput
-                placeholder="Search nominee or contribution"
+                placeholder="Search nominees"
                 leftSection={<IconSearch size={16} />}
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
@@ -723,10 +770,19 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                 onChange={(value) => setFilters(prev => ({ ...prev, technology: value || '' }))}
                 clearable
               />
+              <Select
+                placeholder="Filter by department"
+                aria-label="Filter by department"
+                data={departments}
+                value={filters.department || null}
+                onChange={(value) => setFilters(prev => ({ ...prev, department: value || '' }))}
+                searchable
+                clearable
+              />
           </SimpleGrid>
         </Card>
 
-        <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
+        <SimpleGrid className="dp-project-grid" cols={1} spacing="md">
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => (
               <Card key={i} className="dp-project-card" h={330} p="lg">
@@ -743,14 +799,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                 data-voted={project.user_vote ? 'true' : undefined}
                 p="md"
               >
-                <Stack gap="sm" h="100%">
+                <div className="dp-candidate-layout">
                   <div className="dp-card-visual">
                     {project.images[0] ? (
                       <Image
                         src={project.images[0]}
                         alt={`${project.nominee_name} nomination`}
-                        h={148}
-                        radius="lg"
+                        className="dp-candidate-photo"
                         fit="cover"
                       />
                     ) : (
@@ -767,34 +822,37 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     ) : null}
                   </div>
 
+                  <div className="dp-candidate-info">
+                  <div className="dp-candidate-scroll" tabIndex={0} role="region" aria-label={language === 'zh' ? `${project.nominee_name} 的报名信息` : `Nomination information for ${project.nominee_name}`}>
                   <Badge variant="outline" w="fit-content">{project.category}</Badge>
                   <div>
-                    <Title order={4} lineClamp={1}>{project.title}</Title>
+                    <Title order={3} mt="sm">{project.title}</Title>
                     <Group gap={6} mt={5}>
                       <IconUser size={13} />
                       <Text size="sm" fw={550} translate="no">{project.nominee_name}</Text>
                     </Group>
                     <Text size="sm" c="dimmed" mt={4}><span>Department</span>: <span translate="no">{project.nominee_org_code.split('-')[0] || '—'}</span></Text>
                   </div>
-                  <Text size="sm" c="dimmed" lineClamp={2}>{project.description}</Text>
+                  <Text size="sm" className="dp-candidate-description" mt="md">{project.description}</Text>
 
-                  <Group gap={6}>
+                  <Group gap={6} className="dp-nomination-tags" translate="no">
                     {project.technologies.slice(0, 2).map((tech) => (
-                      <Badge key={tech} size="sm" variant="light">
+                      <Badge key={tech} size="sm" variant="light" title={tech}>
                         {tech}
                       </Badge>
                     ))}
                     {project.technologies.length > 2 && (
-                      <Badge size="sm" variant="outline">
+                      <Badge size="sm" variant="outline" title={project.technologies.slice(2).join('、')}>
                         +{project.technologies.length - 2}
                       </Badge>
                     )}
                   </Group>
 
-                  <Group justify="space-between" align="center" mt="auto" wrap="nowrap">
+                  </div>
+                  <Group className="dp-candidate-actions" justify="space-between" align="center" wrap="wrap">
                     <Group gap={6}>
                       <Button size="compact-sm" variant="subtle" onClick={() => openProjectModal(project)}>
-                        Details & comments
+                        View details
                       </Button>
                       {project.github_url && (
                         <ActionIcon
@@ -826,6 +884,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <Button
                       className="dp-vote-button"
                       loading={votingIds.has(project.id)}
+                      disabled={clearingVotes}
                       data-voted={project.user_vote ? 'true' : 'false'}
                       variant={project.user_vote ? 'filled' : 'default'}
                       leftSection={project.user_vote ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
@@ -838,7 +897,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       {project.user_vote ? 'Voted' : 'Vote'} ({project.votes})
                     </Button>
                   </Group>
-                </Stack>
+                  </div>
+                </div>
               </Card>
             ))
           ) : (
@@ -860,12 +920,103 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         </>
         )}
 
+        <Button
+          className="dp-vote-cart-button"
+          leftSection={<IconShoppingCart size={22} />}
+          rightSection={<Badge color="white" c="grape" variant="filled">{votedProjects.length}</Badge>}
+          aria-label={language === 'zh' ? `我的点赞（${votedProjects.length}）` : `My votes (${votedProjects.length})`}
+          aria-controls="vote-cart"
+          aria-haspopup="dialog"
+          aria-expanded={cartOpened}
+          onClick={() => setCartOpened((opened) => !opened)}
+        >
+          {language === 'zh' ? '我的点赞' : 'My votes'}
+        </Button>
+
+        {cartOpened && <section
+          id="vote-cart"
+          className="dp-vote-cart-panel"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="vote-cart-title"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setCartOpened(false)
+              document.querySelector<HTMLButtonElement>('.dp-vote-cart-button')?.focus()
+            }
+          }}
+        >
+          <Group className="dp-vote-cart-header" justify="space-between" wrap="nowrap">
+            <Title order={2} size="h4" id="vote-cart-title" aria-live="polite">{language === 'zh' ? `我的点赞（${votedProjects.length}）` : `My votes (${votedProjects.length})`}</Title>
+            <Group gap={4} wrap="nowrap">
+            <Button variant="subtle" color="red" size="compact-xs" loading={clearingVotes}
+              disabled={!votedProjects.length || votingIds.size > 0 || loading}
+              leftSection={<IconTrash size={14} />} onClick={() => void clearAllVotes()}>
+              {language === 'zh' ? '一键清空' : 'Clear all'}
+            </Button>
+            <CloseButton aria-label={language === 'zh' ? '关闭我的点赞' : 'Close my votes'} onClick={() => {
+              setCartOpened(false)
+              document.querySelector<HTMLButtonElement>('.dp-vote-cart-button')?.focus()
+            }} />
+            </Group>
+          </Group>
+          <div className="dp-vote-cart-body">
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">{language === 'zh' ? '点赞后自动保存，可继续浏览候选人并点赞。每赛道最多4票，每次增删后跨部门票占比须至少50%。' : 'Votes are saved immediately. Keep browsing and voting alongside this panel. Up to 4 votes per category; at least 50% outside your department after every change.'}</Text>
+            {voteError && <Alert color="red" role="alert">{voteError}</Alert>}
+            {loadError ? (
+              <Alert color="red"><Text>Unable to load nominations</Text><Button variant="subtle" onClick={() => void loadProjects()}>Retry</Button></Alert>
+            ) : loading ? (
+              <Text c="dimmed">Loading nominations…</Text>
+            ) : !user ? (
+              <Stack align="center" py="xl">
+                <IconShoppingCart size={40} />
+                <Text>{language === 'zh' ? '登录后查看已点赞的候选人' : 'Sign in to view your votes'}</Text>
+                <Button onClick={() => navigate('/login?redirect=%2Fprojects')}>{language === 'zh' ? '登录' : 'Sign in'}</Button>
+              </Stack>
+            ) : votedProjects.length === 0 ? (
+              <Stack align="center" py="xl">
+                <IconShoppingCart size={40} />
+                <Text>{language === 'zh' ? '还没有点赞的候选人' : 'No votes yet'}</Text>
+                <Button variant="light" onClick={() => setCartOpened(false)}>{language === 'zh' ? '继续浏览候选人' : 'Browse nominees'}</Button>
+              </Stack>
+            ) : votedProjects.map((project) => (
+              <div className="dp-vote-cart-item" key={project.id}>
+                <Group wrap="nowrap" align="flex-start">
+                  <Avatar src={project.images[0]} alt={project.nominee_name} size={56} radius="md"><IconUser /></Avatar>
+                  <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
+                    <Text fw={700} style={{ overflowWrap: 'anywhere' }} translate="no">{project.title}</Text>
+                    <Text size="sm" translate="no">{project.nominee_name}</Text>
+                    <Badge variant="light" w="fit-content" maw="100%">{project.category}</Badge>
+                    <Text size="sm" c="dimmed"><span>Department</span>: <span translate="no">{project.nominee_org_code.split('-')[0] || '—'}</span></Text>
+                  </Stack>
+                </Group>
+                <Group justify="space-between" mt="sm">
+                  <Button variant="subtle" size="xs" onClick={() => { setCartOpened(false); openProjectModal(project) }}>View details</Button>
+                  <Button
+                    variant="light"
+                    color="red"
+                    size="xs"
+                    leftSection={<IconTrash size={15} />}
+                    loading={votingIds.has(project.id)}
+                      disabled={clearingVotes}
+                    aria-label={language === 'zh' ? `取消点赞 ${project.title}` : `Remove vote for ${project.title}`}
+                    onClick={() => void handleVote(project.id)}
+                  >{language === 'zh' ? '取消点赞' : 'Remove vote'}</Button>
+                </Group>
+              </div>
+            ))}
+          </Stack>
+          </div>
+        </section>}
+
         {/* Project Detail Modal */}
         <Modal
           opened={modalOpened}
           onClose={() => setModalOpened(false)}
           title={selectedProject?.title}
           size="xl"
+          classNames={{ content: 'dp-candidate-modal', header: 'dp-candidate-modal-header' }}
         >
         {selectedProject && (
           <Stack gap="md">
@@ -975,7 +1126,6 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               </Stack>
             ) : <Button variant="subtle" color="gray" onClick={() => setConfirmClearVotes(true)}>Reset my track votes</Button>)}
 
-            {user && <NominationComments key={selectedProject.id} ideaId={selectedProject.id} userId={user.id} isAdmin={user.role === 'admin'} />}
           </Stack>
         )}
       </Modal>

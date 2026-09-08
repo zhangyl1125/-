@@ -1,5 +1,7 @@
+import userEvent from '@testing-library/user-event'
+import { HackathonService } from '../services/hackathonService'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AwardManagement } from './AwardManagement'
@@ -7,8 +9,9 @@ import { AwardManagement } from './AwardManagement'
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
 
 const { user } = vi.hoisted(() => ({ user: { id: 'judge-1', role: 'participant' as 'participant' | 'admin' } }))
+vi.mock('../contexts/LanguageContext', () => ({ useLanguage: () => ({ language: 'en' }) }))
 vi.mock('../store/authStore', () => ({ useAuthStore: () => ({ user }) }))
-vi.mock('../services/hackathonService', () => ({ HackathonService: { getHackathons: vi.fn().mockResolvedValue({ content: [
+vi.mock('../services/hackathonService', () => ({ HackathonService: { deleteHackathon: vi.fn().mockResolvedValue(undefined), getHackathons: vi.fn().mockResolvedValue({ content: [
   { id: 'award-1', title: 'Assigned award', startDate: '2026-10-19', endDate: '2026-11-30', status: 'running' },
   { id: 'award-2', title: 'Other award', startDate: '2026-10-19', endDate: '2026-11-30', status: 'running' },
 ] }) } }))
@@ -26,6 +29,7 @@ describe('AwardManagement', () => {
     expect(screen.getByRole('link', { name: 'Committee scoring' })).toHaveAttribute('href', '/hackathons/award-1/judge')
     expect(screen.queryByText(/Associate voting: 4 votes/)).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Create award campaign' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete award' })).not.toBeInTheDocument()
   })
 
   it('opens management from the award title without a separate settings button', async () => {
@@ -34,6 +38,31 @@ describe('AwardManagement', () => {
       show('/awards')
       expect(await screen.findByRole('link', { name: 'Assigned award' })).toHaveAttribute('href', '/awards/award-1')
       expect(screen.queryByText('Campaign settings')).not.toBeInTheDocument()
+    } finally { user.role = 'participant' }
+  })
+
+  it('searches awards and deletes only the confirmed campaign, retaining it on failure', async () => {
+    user.role = 'admin'
+    try {
+      const actor = userEvent.setup()
+      show('/awards')
+      await screen.findByRole('link', { name: 'Assigned award' })
+      await actor.type(screen.getByRole('textbox', { name: 'Search awards' }), 'Other')
+      expect(screen.queryByRole('link', { name: 'Assigned award' })).not.toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Edit campaign & dates' })).toHaveAttribute('href', '/hackathons/award-2/edit')
+      await actor.click(screen.getByRole('button', { name: 'Delete award' }))
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).getByText('Other award')).toBeInTheDocument()
+      expect(HackathonService.deleteHackathon).not.toHaveBeenCalled()
+      vi.mocked(HackathonService.deleteHackathon).mockRejectedValueOnce(new Error('Deletion failed'))
+      await actor.click(within(dialog).getByRole('button', { name: 'Confirm deletion' }))
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Deletion failed')
+      expect(screen.getByRole('link', { name: 'Other award' })).toBeInTheDocument()
+      await actor.click(within(dialog).getByRole('button', { name: 'Confirm deletion' }))
+      await waitFor(() => expect(screen.queryByRole('link', { name: 'Other award' })).not.toBeInTheDocument())
+      expect(HackathonService.deleteHackathon).toHaveBeenCalledWith('award-2')
+      await actor.clear(screen.getByRole('textbox', { name: 'Search awards' }))
+      expect(screen.getByRole('link', { name: 'Assigned award' })).toBeInTheDocument()
     } finally { user.role = 'participant' }
   })
 

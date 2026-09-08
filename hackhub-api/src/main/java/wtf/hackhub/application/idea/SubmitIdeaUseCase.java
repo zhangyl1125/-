@@ -64,15 +64,22 @@ public class SubmitIdeaUseCase {
 		Hackathon hackathon = hackathonRepository.findById(hackathonId)
 				.orElseThrow(() -> new IdeaHackathonNotFoundException(hackathonId));
 
-		// Validate team belongs to the hackathon
-		var team = teamRepository.findById(teamId).orElseThrow(() -> new IdeaTeamNotFoundException(teamId));
-		if (!team.getHackathonId().equals(hackathonId)) {
-			throw new IdeaTeamHackathonMismatchException(teamId, hackathonId);
-		}
-
-		// Validate user belongs to the team
-		if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, createdBy)) {
-			throw new IdeaAccessDeniedException(null, createdBy);
+		if (teamId == null) {
+			// Individual nominations do not require a team or an open team-registration window.
+			var requester = profileRepository.findById(createdBy)
+					.orElseThrow(() -> new IdeaAccessDeniedException(null, createdBy));
+			if (requester.getRole() != Profile.Role.ADMIN && requester.getRole() != Profile.Role.MANAGER) {
+				throw new IdeaAccessDeniedException(null, createdBy);
+			}
+		} else {
+			// Preserve membership checks for legacy team submissions.
+			var team = teamRepository.findById(teamId).orElseThrow(() -> new IdeaTeamNotFoundException(teamId));
+			if (!team.getHackathonId().equals(hackathonId)) {
+				throw new IdeaTeamHackathonMismatchException(teamId, hackathonId);
+			}
+			if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, createdBy)) {
+				throw new IdeaAccessDeniedException(null, createdBy);
+			}
 		}
 
 		// Validate user is org member (if hackathon has an org)
@@ -81,6 +88,7 @@ public class SubmitIdeaUseCase {
 			throw new IdeaAccessDeniedException(null, createdBy);
 		}
 
+		tags = normalizeTags(tags);
 		validateNominee(projectAttachments, createdBy);
 		projectAttachments = nomineeDirectory.enrich(projectAttachments, true);
 		Idea idea = new Idea(title, description, hackathonId, teamId, createdBy, category);
@@ -98,6 +106,7 @@ public class SubmitIdeaUseCase {
 		if (!idea.getCreatedBy().equals(requestingUserId)) {
 			throw new IdeaAccessDeniedException(ideaId, requestingUserId);
 		}
+		tags = normalizeTags(tags);
 		validateNominee(projectAttachments, requestingUserId);
 		projectAttachments = nomineeDirectory.enrich(projectAttachments, true);
 		if (idea.getVotes() > 0 || !judgeScoreRepository.findAllByIdeaId(ideaId).isEmpty()) {
@@ -116,6 +125,17 @@ public class SubmitIdeaUseCase {
 		Idea.Status resolvedStatus = status != null ? status : idea.getStatus();
 		idea.update(title, description, category, tags, resolvedStatus, repositoryUrl, demoUrl, projectAttachments);
 		return ideaRepository.save(idea);
+	}
+
+	private static List<String> normalizeTags(List<String> tags) {
+		if (tags == null)
+			return List.of();
+		List<String> normalized = tags.stream().filter(java.util.Objects::nonNull)
+				.flatMap(tag -> java.util.Arrays.stream(tag.split("[,，、]")))
+				.map(String::strip).filter(tag -> !tag.isEmpty()).distinct().toList();
+		if (normalized.size() > 5)
+			throw new IllegalArgumentException("Add up to 5 tags, separated by 、, ， or commas (,).");
+		return normalized;
 	}
 
 	private void validateNominee(String attachments, UUID requesterId) {

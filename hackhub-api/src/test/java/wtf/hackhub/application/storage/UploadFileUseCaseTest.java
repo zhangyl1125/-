@@ -53,6 +53,21 @@ class UploadFileUseCaseTest {
 	}
 
 	@Test
+	void accepts_exactly_50_mb() {
+		byte[] jpeg = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x10, 0x4A, 0x46,
+				0x49, 0x46, 0x00};
+		MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", jpeg) {
+			@Override
+			public long getSize() {
+				return StoragePort.MAX_FILE_SIZE_BYTES;
+			}
+		};
+		when(storagePort.presignedDownloadUrl(any(), any(), anyInt())).thenReturn("https://minio/url");
+		assertThat(useCase.execute(file, "bucket", "prefix").url()).isEqualTo("https://minio/url");
+		verify(storagePort).upload(eq("bucket"), anyString(), any(), eq(StoragePort.MAX_FILE_SIZE_BYTES), eq("image/jpeg"));
+	}
+
+	@Test
 	void rejects_executable_binary() {
 		// ELF magic bytes
 		byte[] elfBytes = new byte[]{0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00};

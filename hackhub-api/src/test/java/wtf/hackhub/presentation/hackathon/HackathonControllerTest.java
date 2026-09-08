@@ -61,6 +61,33 @@ class HackathonControllerTest {
 				USER_ID, null);
 	}
 
+	@Test
+	void admin_can_delete_campaign() throws Exception {
+		UUID id = UUID.randomUUID();
+		mvc.perform(delete("/api/v1/hackathons/" + id).with(MockAuthHelper.asAdmin(USER_ID)))
+				.andExpect(status().isNoContent());
+		verify(updateUseCase).delete(id);
+	}
+
+	@Test
+	void non_admin_cannot_delete_campaign() throws Exception {
+		UUID id = UUID.randomUUID();
+		mvc.perform(delete("/api/v1/hackathons/" + id).with(MockAuthHelper.asManager(USER_ID)))
+				.andExpect(status().isForbidden());
+		mvc.perform(delete("/api/v1/hackathons/" + id).with(MockAuthHelper.asParticipant(USER_ID)))
+				.andExpect(status().isForbidden());
+		mvc.perform(delete("/api/v1/hackathons/" + id)).andExpect(status().isUnauthorized());
+		org.mockito.Mockito.verifyNoInteractions(updateUseCase);
+	}
+
+	@Test
+	void deleting_missing_campaign_returns_404() throws Exception {
+		UUID id = UUID.randomUUID();
+		org.mockito.Mockito.doThrow(new GetHackathonsUseCase.HackathonNotFoundException(id)).when(updateUseCase).delete(id);
+		mvc.perform(delete("/api/v1/hackathons/" + id).with(MockAuthHelper.asAdmin(USER_ID)))
+				.andExpect(status().isNotFound());
+	}
+
 	// ── list ──────────────────────────────────────────────────────────────────
 
 	@Test

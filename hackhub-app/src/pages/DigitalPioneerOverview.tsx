@@ -2,7 +2,7 @@ import { Button, Container, Grid, Group, Stack, Text } from '@mantine/core'
 import { IconBallpen, IconEye } from '@tabler/icons-react'
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
-import { AwardLens } from '../components/DigitalPioneer/AwardLens'
+import pioneerLogo from '../assets/digital-pioneer-logo.png'
 import { useLanguage } from '../contexts/LanguageContext'
 import { DIGITAL_PIONEER_TIMELINE, DIGITAL_PIONEER_TRACKS } from '../config/digitalPioneer'
 import './DigitalPioneer.css'
@@ -15,7 +15,7 @@ const copy = {
     timelineTitle: '2026 selection timeline',
   },
   zh: {
-    nominate: '开始提名',
+    nominate: '开始报名',
     browse: '浏览并投票',
     categoriesTitle: '奖项赛道与评选标准',
     timelineTitle: '2026 评选时间线',
@@ -28,7 +28,7 @@ export function DigitalPioneerOverview(): ReactElement {
 
   return (
     <Container size={1440} py={{ base: 'md', md: 'xl' }} className="dp-page">
-      <section className="dp-hero" aria-labelledby="digital-pioneer-title">
+      <section className="dp-hero dp-overview-hero" aria-labelledby="digital-pioneer-title">
         <Grid className="dp-hero__content" gutter={{ base: 42, lg: 76 }} align="center">
           <Grid.Col span={{ base: 12, lg: 7 }}>
             <Stack gap={32}>
@@ -42,7 +42,10 @@ export function DigitalPioneerOverview(): ReactElement {
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, lg: 5 }}>
-            <AwardLens />
+            <div className="dp-overview-logo-wrap">
+              <img className="dp-overview-logo" src={pioneerLogo} alt="2026 BDCN Digital Pioneer" width={1254} height={1254} />
+              <span className="dp-overview-logo-lettering" aria-hidden="true" style={{ maskImage: `url(${pioneerLogo})`, WebkitMaskImage: `url(${pioneerLogo})` }} />
+            </div>
           </Grid.Col>
         </Grid>
       </section>
@@ -76,14 +79,13 @@ export function DigitalPioneerOverview(): ReactElement {
               <Text className="dp-timeline-phase" fw={700} translate="no">
                 {String(index + 1).padStart(2, '0')} · {item.phase}
               </Text>
-              <Text className="dp-timeline-detail">{item.detail}</Text>
             </article>
           ))}
         </div>
       </section>
 
       <section className="dp-cta" aria-label={text.nominate}>
-        <Group gap="sm">
+        <Group gap="sm" justify="flex-end">
           <Button
             component={Link}
             to="/nominate"
