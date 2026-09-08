@@ -9,6 +9,7 @@ import {
 } from '@tabler/icons-react'
 import { Link } from 'react-router-dom'
 import { AwardBrand } from '../components/Layout/AwardBrand'
+import { useTechBackground } from '../hooks/useTechBackground'
 import './LandingPage.css'
 
 const programIcons = [
@@ -17,12 +18,13 @@ const programIcons = [
   { label: 'Collaboration to win', icon: IconUsersGroup },
 ] as const
 
-const landingVideoSrc = '/media/award-landing-bg.mp4'
-const landingPosterSrc = '/media/award-landing-poster.webp'
+const landingVideoSrc = '/media/tech-blue-loop.mp4'
+const landingPosterSrc = '/media/tech-blue-poster.jpg'
 
 export function LandingPage({ authenticated = false }: { authenticated?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
+  const backdropRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const entryPoints = [
     { label: 'Discover', to: authenticated ? '/overview' : '/login?redirect=/overview' },
@@ -30,6 +32,8 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
     { label: 'Vote', to: authenticated ? '/projects' : '/login?redirect=/projects' },
   ] as const
   const startPath = authenticated ? '/overview' : '/login'
+
+  useTechBackground(backdropRef, videoRef)
 
   useEffect(() => {
     const video = videoRef.current
@@ -62,7 +66,7 @@ export function LandingPage({ authenticated = false }: { authenticated?: boolean
 
   return (
     <div className="award-landing" id="landing-top">
-      <div className="award-landing__backdrop" aria-hidden="true">
+      <div ref={backdropRef} className="award-landing__backdrop" aria-hidden="true">
         <video
           ref={videoRef}
           className={videoReady ? 'is-ready' : undefined}

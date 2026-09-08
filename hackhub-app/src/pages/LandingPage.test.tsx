@@ -50,11 +50,11 @@ describe('LandingPage', () => {
 
     const video = container.querySelector('video')
     expect(video).toHaveAttribute('preload', 'auto')
-    expect(video).toHaveAttribute('poster', '/media/award-landing-poster.webp')
+    expect(video).toHaveAttribute('poster', '/media/tech-blue-poster.jpg')
     expect(video).not.toHaveClass('is-ready')
     expect(video?.querySelector('source')).toHaveAttribute(
       'src',
-      '/media/award-landing-bg.mp4',
+      '/media/tech-blue-loop.mp4',
     )
 
     fireEvent.loadedData(video as HTMLVideoElement)

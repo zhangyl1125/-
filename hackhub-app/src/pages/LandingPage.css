@@ -49,44 +49,7 @@
 .award-landing__backdrop {
   z-index: -3;
   overflow: hidden;
-  background: #050505 url("/media/award-landing-poster.webp") center / cover no-repeat;
-}
-
-.award-landing__backdrop::before,
-.award-landing__backdrop::after {
-  position: absolute;
-  content: "";
-  pointer-events: none;
-}
-
-.award-landing__backdrop::before {
-  inset: -34%;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse at 42% 47%, rgba(255, 255, 255, 0.3) 0, rgba(154, 154, 158, 0.11) 18%, transparent 44%),
-    radial-gradient(ellipse at 68% 58%, rgba(255, 255, 255, 0.16) 0, transparent 36%);
-  filter: blur(42px);
-  opacity: 0.62;
-  transform: translate3d(-3%, -1%, 0) scale(1.02);
-  animation: award-backdrop-drift 7s ease-in-out infinite alternate;
-  will-change: transform, opacity;
-}
-
-.award-landing__backdrop::after {
-  top: 18%;
-  left: 50%;
-  z-index: 0;
-  width: min(62vw, 820px);
-  height: min(62vw, 820px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 50%;
-  box-shadow:
-    0 0 90px rgba(255, 255, 255, 0.05),
-    inset 0 0 110px rgba(255, 255, 255, 0.04);
-  opacity: 0.7;
-  transform: translate3d(-50%, 0, 0) scale(0.92);
-  animation: award-backdrop-breathe 6s ease-in-out infinite alternate;
-  will-change: transform, opacity;
+  background: #010a29 url("/media/tech-blue-poster.jpg") center / cover no-repeat;
 }
 
 .award-landing__backdrop video {
@@ -411,16 +374,6 @@
   to { opacity: 1; filter: blur(0); transform: translateY(0); }
 }
 
-@keyframes award-backdrop-drift {
-  from { opacity: 0.52; transform: translate3d(-3%, -1%, 0) scale(1.02); }
-  to { opacity: 0.72; transform: translate3d(4%, 2%, 0) scale(1.08); }
-}
-
-@keyframes award-backdrop-breathe {
-  from { opacity: 0.38; transform: translate3d(-50%, 0, 0) scale(0.9); }
-  to { opacity: 0.72; transform: translate3d(-50%, -2%, 0) scale(1.04); }
-}
-
 @media (max-width: 720px) {
   .award-landing {
     padding-inline: 16px;
@@ -577,10 +530,6 @@
     transform: none;
   }
 
-  .award-landing__backdrop::before,
-  .award-landing__backdrop::after {
-    animation: none !important;
-  }
 }
 
 @keyframes award-menu-in {
