@@ -50,12 +50,8 @@ export function DigitalPioneerOverview(): ReactElement {
         </Grid>
       </section>
 
-      <section className="dp-section" aria-labelledby="award-categories-title">
-        <Grid gutter={{ base: 18, md: 60 }} align="end">
-          <Grid.Col span={{ base: 12, md: 7 }}>
-            <h2 id="award-categories-title" className="dp-section-title">{text.categoriesTitle}</h2>
-          </Grid.Col>
-        </Grid>
+      <section className="dp-section dp-categories-section" aria-labelledby="award-categories-title">
+        <h2 id="award-categories-title" className="dp-section-title dp-categories-title">{text.categoriesTitle}</h2>
 
         <div className="dp-track-grid">
           {DIGITAL_PIONEER_TRACKS.map((track) => (
@@ -76,9 +72,11 @@ export function DigitalPioneerOverview(): ReactElement {
           {DIGITAL_PIONEER_TIMELINE.map((item, index) => (
             <article className="dp-timeline-item" key={item.phase}>
               <Text className="dp-timeline-period">{item.period}</Text>
-              <Text className="dp-timeline-phase" fw={700} translate="no">
-                {String(index + 1).padStart(2, '0')} · {item.phase}
-              </Text>
+              <span className="dp-timeline-node" aria-hidden="true" />
+              <div className="dp-timeline-card">
+                <span className="dp-timeline-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+                <h3 className="dp-timeline-phase" translate="no">{item.phase}</h3>
+              </div>
             </article>
           ))}
         </div>

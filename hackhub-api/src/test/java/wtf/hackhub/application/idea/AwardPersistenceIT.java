@@ -208,6 +208,26 @@ class AwardPersistenceIT extends PostgresIntegrationTest {
 				.isZero();
 		assertThat(jdbc.queryForObject("SELECT votes FROM ideas WHERE id=?", Integer.class, idea)).isEqualTo(1);
 	}
+	@Test
+	void full_ballot_can_withdraw_replace_and_vote_again_after_both_resets() {
+		List<UUID> candidates = java.util.stream.IntStream.range(0, 5)
+				.mapToObj(index -> nomination(outside, "").getId()).toList();
+		for (UUID id : candidates.subList(0, 4))
+			assertThat(voting.execute(id, voter).voted()).isTrue();
+		assertThatThrownBy(() -> voting.execute(candidates.get(4), voter))
+				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class);
+		assertThat(voting.execute(candidates.get(0), voter).voted()).isFalse();
+		assertThat(voting.execute(candidates.get(4), voter).voted()).isTrue();
+		voting.clearTrack(award, voter, "Customer Values");
+		for (UUID id : candidates.subList(0, 4))
+			assertThat(voting.execute(id, voter).voted()).isTrue();
+		voting.clearAll(voter);
+		for (UUID id : candidates.subList(1, 5))
+			assertThat(voting.execute(id, voter).voted()).isTrue();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM idea_votes WHERE user_id=?", Integer.class, voter)).isEqualTo(4);
+		assertThat(jdbc.queryForObject("SELECT sum(votes) FROM ideas WHERE hackathon_id=?", Integer.class, award)).isEqualTo(4);
+	}
+
 	boolean cast(UUID id) {
 		try {
 			voting.execute(id, voter);

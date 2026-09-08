@@ -195,101 +195,6 @@
   text-align: center;
 }
 
-.award-landing__program-mark {
-  display: inline-flex;
-  align-items: center;
-  margin-bottom: clamp(18px, 3vh, 30px);
-  color: #cdcdcf;
-  font-size: clamp(12px, 1.2vw, 13px);
-  font-family: var(--landing-sans);
-  font-weight: 650;
-  letter-spacing: 0.005em;
-  white-space: nowrap;
-}
-
-.award-landing__track-marks {
-  display: flex;
-  margin-right: -13px;
-}
-
-.award-landing__track-marks span {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 50%;
-  background: #252527;
-  color: #fff;
-  font-family: var(--app-font-body);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
-  cursor: default;
-  isolation: isolate;
-  transition:
-    border-color 320ms ease,
-    box-shadow 480ms var(--landing-spring),
-    color 320ms ease,
-    transform 480ms var(--landing-spring);
-  will-change: transform;
-}
-
-.award-landing__track-marks span::before {
-  position: absolute;
-  inset: -5px;
-  z-index: -1;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: inherit;
-  content: "";
-  opacity: 0;
-  transform: scale(0.78);
-  transition:
-    opacity 260ms ease,
-    transform 480ms var(--landing-spring);
-}
-
-.award-landing__track-marks svg {
-  display: block;
-  transition: transform 480ms var(--landing-spring);
-}
-
-.award-landing__track-marks span + span {
-  margin-left: -12px;
-}
-
-.award-landing__track-marks span:hover {
-  z-index: 8;
-  border-color: rgba(255, 255, 255, 0.88);
-  box-shadow:
-    0 15px 30px rgba(0, 0, 0, 0.34),
-    0 0 24px rgba(255, 255, 255, 0.2),
-    inset 0 1px rgba(255, 255, 255, 0.14);
-  color: #fff;
-  transform: translateY(-5px) scale(1.24);
-}
-
-.award-landing__track-marks span:hover::before {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.award-landing__track-marks span:hover svg {
-  transform: scale(1.08) rotate(-3deg);
-}
-
-.award-landing__program-mark > span:last-child {
-  min-height: 38px;
-  padding: 11px 19px 10px 27px;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 999px;
-  background: #252527;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
-  text-shadow: 0 1px 12px rgba(255, 255, 255, 0.08);
-}
-
 .award-landing__headline {
   display: grid;
   width: 100%;
@@ -481,30 +386,7 @@
 
 }
 
-@media (max-width: 420px) {
-  .award-landing__program-mark > span:last-child {
-    padding-right: 14px;
-    padding-left: 24px;
-    font-size: 11px;
-  }
-
-  .award-landing__track-marks span {
-    width: 34px;
-    height: 34px;
-  }
-
-  .award-landing__program-mark > span:last-child {
-    min-height: 34px;
-    padding-top: 9px;
-    padding-bottom: 8px;
-  }
-}
-
 @media (max-height: 700px) and (min-width: 721px) {
-  .award-landing__program-mark {
-    margin-bottom: 14px;
-  }
-
   .award-landing__subhead {
     margin-top: 16px;
   }

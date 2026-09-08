@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   IconArrowUpRight,
-  IconBulb,
-  IconHeartHandshake,
   IconMenu2,
-  IconUsersGroup,
   IconX,
 } from '@tabler/icons-react'
 import { Avatar, Group, Menu, Text, UnstyledButton } from '@mantine/core'
@@ -15,12 +12,6 @@ import { Link, useLocation } from 'react-router-dom'
 import { AwardBrand } from '../components/Layout/AwardBrand'
 import { useTechBackground } from '../hooks/useTechBackground'
 import './LandingPage.css'
-
-const programIcons = [
-  { label: 'Customer value', icon: IconHeartHandshake },
-  { label: 'Innovation breakthrough', icon: IconBulb },
-  { label: 'Collaboration to win', icon: IconUsersGroup },
-] as const
 
 const landingVideoSrc = '/media/tech-blue-loop.mp4'
 const landingPosterSrc = '/media/tech-blue-poster.jpg'
@@ -174,17 +165,6 @@ export function LandingPage({ children }: { children?: ReactNode }) {
       ) : null}
 
       {showHero && <section className="award-landing__hero">
-        <div className="award-landing__program-mark award-landing__reveal" style={{ '--delay': '80ms' } as CSSProperties}>
-          <div className="award-landing__track-marks" aria-hidden="true">
-            {programIcons.map(({ label, icon: TrackIcon }) => (
-              <span key={label} title={label}>
-                <TrackIcon size={17} stroke={1.7} />
-              </span>
-            ))}
-          </div>
-          <span>Digital Pioneer Award · 2026</span>
-        </div>
-
         <h1 className="award-landing__headline">
           <span>2026 BDCN</span>
           <span>Digital Pioneer Award</span>

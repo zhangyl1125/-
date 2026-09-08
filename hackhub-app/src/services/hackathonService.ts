@@ -45,6 +45,8 @@ export interface CreateHackathonInput {
   maxTeamSize: number
   allowedParticipants: number
   organizationId?: string
+  rules?: string
+  bannerUrl?: string | null
   tags?: string[]
   prizes?: string[]
 }

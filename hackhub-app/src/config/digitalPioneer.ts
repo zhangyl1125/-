@@ -100,16 +100,18 @@ export const DIGITAL_PIONEER_VOTING_RULES = {
 } as const
 
 export function normalizeDigitalPioneerTrack(category: string, technologies: string[]): string {
-  if (DIGITAL_PIONEER_TRACKS.some((track) => track.value === category)) return category
+  const raw = category.trim()
+  const official = DIGITAL_PIONEER_TRACKS.find((track) => track.value.toLowerCase() === raw.toLowerCase())
+  if (official) return official.value
 
   const legacyTracks: Record<string, string> = {
     'AI & Intelligence': DIGITAL_PIONEER_TRACKS[1].value,
     'Digital Transformation': DIGITAL_PIONEER_TRACKS[0].value,
     'Green & Sustainability': DIGITAL_PIONEER_TRACKS[2].value,
   }
-  if (legacyTracks[category]) return legacyTracks[category]
+  if (legacyTracks[raw]) return legacyTracks[raw]
 
-  const searchable = `${category} ${technologies.join(' ')}`.toLowerCase()
+  const searchable = `${raw} ${technologies.join(' ')}`.toLowerCase()
   if (/collaborat|team|shared|cross.?department|together|silo/.test(searchable)) {
     return DIGITAL_PIONEER_TRACKS[2].value
   }

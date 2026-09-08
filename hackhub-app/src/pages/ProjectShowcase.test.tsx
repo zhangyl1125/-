@@ -5,7 +5,7 @@ import { MantineProvider } from '@mantine/core'
 import { MemoryRouter } from 'react-router-dom'
 import { ProjectShowcase } from './ProjectShowcase'
 
-const { createIdea, createTeam, getOrCreateNominationTeam, getComments, addComment, getIdeas, getHackathons, updateIdea, uploadFile, voteIdea, clearMyVotes, currentUser, listNominees } = vi.hoisted(() => ({
+const { createIdea, createTeam, getOrCreateNominationTeam, getComments, addComment, getIdeas, getHackathons, updateIdea, uploadFile, voteIdea, clearMyVotes, clearTrackVotes, currentUser, listNominees } = vi.hoisted(() => ({
   currentUser: { id: 'user-1', email: 'user@example.com', name: 'User', role: 'participant' as 'participant' | 'manager' | 'admin', skills: [] },
   listNominees: vi.fn().mockResolvedValue({ content: [{ id: 'nominee-2', name: 'Named Associate', email: 'associate@example.com' }] }),
   getHackathons: vi.fn().mockResolvedValue({ content: [{ id: 'hackathon-1', title: 'Spring 2026 Hackathon', status: 'running' }] }),
@@ -34,6 +34,7 @@ const { createIdea, createTeam, getOrCreateNominationTeam, getComments, addComme
   }),
   updateIdea: vi.fn().mockResolvedValue({ id: 'new-idea' }),
   uploadFile: vi.fn().mockResolvedValue({ url: '/image.jpg', key: 'projects/personal-team/image.jpg' }),
+  clearTrackVotes: vi.fn().mockResolvedValue(undefined),
   clearMyVotes: vi.fn().mockResolvedValue(undefined),
   voteIdea: vi.fn().mockResolvedValue({ voted: true, voteCount: 3 }),
 }))
@@ -64,6 +65,7 @@ vi.mock('../services/ideaService', () => ({
     getIdeas,
     voteIdea,
     clearMyVotes,
+    clearTrackVotes,
     createIdea,
     getComments,
     addComment,
@@ -270,6 +272,37 @@ describe('ProjectShowcase', () => {
     expect(within(cart).getByRole('button', { name: 'Clear all' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Vote, 2 votes' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Vote, 2 votes' }))
+    expect(await within(cart).findByText('Customer Portal Renewal')).toBeInTheDocument()
+  })
+
+  it('reconciles saved votes and opens the cart with recovery instructions on a vote limit response', async () => {
+    const actor = userEvent.setup()
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await screen.findByRole('button', { name: 'Vote, 2 votes' })
+    getIdeas.mockResolvedValueOnce({ content: [{
+      id: 'idea-1', title: 'Customer Portal Renewal', description: 'Previously saved nomination',
+      createdBy: 'user-1', category: 'Customer Values', tags: [], attachments: [], projectAttachments: [],
+      votes: 3, userHasVoted: true, status: 'submitted', createdAt: '', updatedAt: '',
+    }] })
+    voteIdea.mockRejectedValueOnce(new Error('Each participant can cast at most 4 votes per award category.'))
+    await actor.click(screen.getByRole('button', { name: 'Vote, 2 votes' }))
+    const cart = await screen.findByRole('dialog')
+    expect(await within(cart).findByRole('alert')).toHaveTextContent('Previous votes count too')
+    expect(await screen.findByRole('button', { name: 'Voted, 3 votes' })).toBeInTheDocument()
+    expect(within(cart).getByText(/Customer Values · 1\/4/)).toBeInTheDocument()
+    expect(within(cart).getByRole('button', { name: /Clear .* Customer Values votes/ })).toBeEnabled()
+  })
+
+  it('clears only the selected award category and allows another vote', async () => {
+    const actor = userEvent.setup()
+    render(<MantineProvider env="test"><MemoryRouter><ProjectShowcase /></MemoryRouter></MantineProvider>)
+    await actor.click(await screen.findByRole('button', { name: 'Vote, 2 votes' }))
+    await actor.click(screen.getByRole('button', { name: 'My votes (1)' }))
+    const cart = screen.getByRole('dialog')
+    await actor.click(within(cart).getByRole('button', { name: /Clear .* Innovation Breakthrough votes/ }))
+    expect(clearTrackVotes).toHaveBeenCalledWith('hackathon-1', 'Innovation Breakthrough')
+    expect(await within(cart).findByText('No votes yet')).toBeInTheDocument()
+    await actor.click(screen.getByRole('button', { name: 'Vote, 2 votes' }))
     expect(await within(cart).findByText('Customer Portal Renewal')).toBeInTheDocument()
   })
 

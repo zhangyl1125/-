@@ -1,4 +1,7 @@
 const uiTranslations: Record<string, string> = {
+  'Campaign details saved': '奖项资料已保存',
+  'Unable to change campaign status.': '奖项状态修改失败。',
+
   'Delete award': '删除奖项',
   'Delete award campaign?': '确认删除奖项？',
   'This permanently deletes the campaign and its nominations, votes, committee assignments, and scores. This cannot be undone.': '将永久删除此奖项及其报名、投票、评委分配和评分记录，删除后无法恢复。',
@@ -1160,6 +1163,7 @@ const uiTranslations: Record<string, string> = {
 }
 
 const dynamicTranslations: Array<[RegExp, (...matches: string[]) => string]> = [
+  [/^Each participant can cast at most (\d+) votes per award category\.$/i, (count) => `每个奖项的每个赛道最多保留 ${count} 票，请在“我的点赞”中撤票或清空该赛道后重新选择。`],
   [/^(\d+) participants?$/i, (count) => `${count} 位参与者`],
   [/^(\d+) members?$/i, (count) => `${count} 位成员`],
   [/^(\d+) teams?$/i, (count) => `${count} 个团队`],

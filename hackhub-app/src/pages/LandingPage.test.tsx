@@ -55,7 +55,7 @@ describe('LandingPage', () => {
     expect(video.querySelector('source')).toHaveAttribute('src', '/media/tech-blue-loop.mp4')
     fireEvent.loadedData(video)
     expect(video).toHaveClass('is-ready')
-    expect(container.querySelectorAll('.award-landing__track-marks svg')).toHaveLength(3)
+    expect(container.querySelector('.award-landing__program-mark')).not.toBeInTheDocument()
   })
 
   it('opens and closes mobile navigation', () => {

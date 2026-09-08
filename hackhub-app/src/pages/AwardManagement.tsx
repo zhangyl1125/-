@@ -115,7 +115,7 @@ export function AwardManagement() {
         <Group justify="space-between">
           <div>
             <Title order={1}>{canManage ? 'Award management' : 'Committee scoring'}</Title>
-            <Text c="dimmed" mt="sm">{canManage ? 'Manage committee members, review case ratings, and track the final ranking.' : 'Open an assigned award to review nominations and submit your ratings.'}</Text>
+            <Text c="white" mt="sm">{canManage ? 'Manage committee members, review case ratings, and track the final ranking.' : 'Open an assigned award to review nominations and submit your ratings.'}</Text>
           </div>
           {canManage && <Button component={Link} to="/hackathons/create" className="dp-primary-button">Create award campaign</Button>}
         </Group>
@@ -125,14 +125,14 @@ export function AwardManagement() {
           visibleCampaigns.length ? visibleCampaigns.map((item) => (
             <Card key={item.id} className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Group justify="space-between">
-                <div><Title order={3}>{canManage ? <Link className="dp-award-title-link" to={`/awards/${item.id}`}>{item.title}</Link> : item.title}</Title><Text c="dimmed" mt="xs">{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</Text></div>
+                <div><Title order={3}>{canManage ? <Link className="dp-award-title-link" to={`/awards/${item.id}`}>{item.title}</Link> : item.title}</Title><Text c="white" mt="xs">{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</Text></div>
                 <Badge>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Badge>
               </Group>
               <Group mt="lg">
                 <Button component={Link} to={`/hackathons/${item.id}/judge`}>Committee scoring</Button>
                 {canManage && <Button component={Link} to={`/hackathons/${item.id}/leaderboard`} variant="light">Scores & rankings</Button>}
                 {canManage && <Button component={Link} to={`/hackathons/${item.id}/edit`} variant="outline">Edit campaign & dates</Button>}
-                {isAdmin && <Button variant="subtle" color="red" onClick={() => requestDelete(item)}>Delete award</Button>}
+                {isAdmin && <Button variant="subtle" color="red" c="#ffb1b1" onClick={() => requestDelete(item)}>Delete award</Button>}
               </Group>
             </Card>
           )) : <Text>No award campaigns are available{canManage ? '.' : ' for your committee account.'}</Text>
@@ -145,7 +145,7 @@ export function AwardManagement() {
                 <Button component={Link} to={`/hackathons/${id}/judge`}>Committee scoring</Button>
                 {canManage && <Button component={Link} to={`/hackathons/${id}/leaderboard`} variant="light">Scores & rankings</Button>}
                 {canManage && <Button component={Link} to={`/hackathons/${id}/edit`} variant="default">Edit campaign & dates</Button>}
-                {isAdmin && <Button variant="subtle" color="red" onClick={() => requestDelete(campaign)}>Delete award</Button>}
+                {isAdmin && <Button variant="subtle" color="red" c="#ffb1b1" onClick={() => requestDelete(campaign)}>Delete award</Button>}
               </Group>
               {canManage && <Select mt="lg" maw={520} size="md" label="Campaign status" description="Running campaigns accept associate votes; completed campaigns close voting." value={campaign.status} disabled={busy}
                 data={[{ value: 'draft', label: 'Draft' }, { value: 'open', label: 'Open' }, { value: 'running', label: 'Running' }, { value: 'completed', label: 'Completed' }].map((option) => ({ ...option, label: language === 'zh' ? translateUiText(option.label) : option.label }))}
@@ -161,7 +161,7 @@ export function AwardManagement() {
                   <Text>{judge.name ?? judge.userId} · {judge.email}</Text>
                   <Button size="sm" variant="subtle" color="red" disabled={busy} onClick={() => void mutate(async () => { await JudgingService.removeJudge(campaign.id, judge.userId); setJudges((current) => current.filter((item) => item.userId !== judge.userId)) })}>Remove</Button>
                 </Group>)}
-                {!judges.length && <Text c="dimmed">No committee members assigned yet.</Text>}
+                {!judges.length && <Text c="white">No committee members assigned yet.</Text>}
                 <Select size="md" label="Assign an associate" searchable value={invitee} onChange={setInvitee} data={members.filter((member) => !judges.some((judge) => judge.userId === member.value))} />
                 <Button w="fit-content" loading={busy} disabled={!invitee} onClick={() => void mutate(async () => { if (!invitee) return; const added = await JudgingService.inviteJudge(campaign.id, invitee); setJudges((current) => [...current, added]); setInvitee(null) })}>Assign committee member</Button>
               </Stack>
@@ -170,7 +170,7 @@ export function AwardManagement() {
             <Card className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Title order={3}>Evaluation standard</Title>
               {DIGITAL_PIONEER_RUBRIC.map((criterion) => <Text key={criterion.key} mt="md"><strong>{criterion.name} · {criterion.weight}%</strong><br />{criterion.description}</Text>)}
-              {canManage && <Text mt="lg" c="dimmed">Associate voting: up to 4 votes per category. At least 50% must be outside the voter's department after every vote or withdrawal. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
+              {canManage && <Text mt="lg" c="white">Associate voting: up to 4 votes per category. At least 50% must be outside the voter's department after every vote or withdrawal. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
             </Card>
           </>
         )}

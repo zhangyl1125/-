@@ -45,6 +45,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useLanguage } from '../contexts/LanguageContext'
+import { translateUiText } from '../contexts/uiTranslations'
 import { notifications } from '@mantine/notifications'
 import { getAllPages } from '../services/pagination'
 import { api, ApiError } from '../lib/apiClient'
@@ -58,6 +59,7 @@ import { TeamService } from '../services/teamService'
 import { JudgingService } from '../services/judgingService'
 import {
   DIGITAL_PIONEER_TRACKS,
+  DIGITAL_PIONEER_VOTING_RULES,
   normalizeDigitalPioneerTrack,
 } from '../config/digitalPioneer'
 import './DigitalPioneer.css'
@@ -407,11 +409,22 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       })
     } catch (error) {
       if (sequence !== loadSequence.current) return
-      setVoteError(error instanceof Error ? error.message : 'Failed to record vote')
-      console.error('Error voting:', error)
-      if (!cartOpened) notifications.show({
+      const message = error instanceof Error ? error.message : 'Failed to record vote'
+      const limit = message.match(/Each participant can cast at most (\d+) votes per award category\.?/i)
+      const displayMessage = limit
+        ? language === 'zh'
+          ? `此奖项的当前赛道已保留 ${limit[1]} 票。之前的点赞也计入额度；请在“我的点赞”中撤回一票，或清空该赛道后重新选择。`
+          : `You already have ${limit[1]} saved votes in this award category. Previous votes count too. Remove a vote in My votes, or clear this category to choose again.`
+        : language === 'zh' ? translateUiText(message) : message
+      setVoteError(displayMessage)
+      if (limit) {
+        setModalOpened(false)
+        setCartOpened(true)
+        // Reconcile saved votes, including changes made in another tab/session.
+        await loadProjects()
+      } else if (!cartOpened) notifications.show({
         title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to record vote',
+        message: displayMessage,
         color: 'red',
       })
     } finally {
@@ -480,18 +493,20 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     }
   }
 
-  const clearTrackVotes = async () => {
-    if (!selectedProject || clearingVotesRef.current || voteRequests.current.size > 0) return
+  const clearTrackVotes = async (awardId = selectedProject?.hackathon_id, category = selectedProject?.category) => {
+    if (!awardId || !category || clearingVotesRef.current || voteRequests.current.size > 0) return
     clearingVotesRef.current = true
     setClearingVotes(true)
     try {
-      await IdeaService.clearTrackVotes(selectedProject.hackathon_id, selectedProject.category)
+      await IdeaService.clearTrackVotes(awardId, category)
       await loadProjects()
       setModalOpened(false)
       setConfirmClearVotes(false)
-      notifications.show({ title: 'Votes reset', message: 'You can now select nominees again.', color: 'teal' })
+      setVoteError(null)
+      if (!cartOpened) notifications.show({ title: 'Votes reset', message: 'You can now select nominees again.', color: 'teal' })
     } catch {
-      notifications.show({ title: 'Error', message: 'Unable to save changes. Please try again.', color: 'red' })
+      setVoteError(language === 'zh' ? '清空赛道失败，请重试。' : 'Unable to clear this category. Please try again.')
+      if (!cartOpened) notifications.show({ title: 'Error', message: 'Unable to save changes. Please try again.', color: 'red' })
     } finally { clearingVotesRef.current = false; setClearingVotes(false) }
   }
 
@@ -797,7 +812,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                 key={project.id}
                 className="dp-project-card"
                 data-voted={project.user_vote ? 'true' : undefined}
-                p="md"
+                p={0}
               >
                 <div className="dp-candidate-layout">
                   <div className="dp-card-visual">
@@ -949,7 +964,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           <Group className="dp-vote-cart-header" justify="space-between" wrap="nowrap">
             <Title order={2} size="h4" id="vote-cart-title" aria-live="polite">{language === 'zh' ? `我的点赞（${votedProjects.length}）` : `My votes (${votedProjects.length})`}</Title>
             <Group gap={4} wrap="nowrap">
-            <Button variant="subtle" color="red" size="compact-xs" loading={clearingVotes}
+            <Button variant="subtle" color="red" c="#ffb1b1" size="compact-xs" loading={clearingVotes}
               disabled={!votedProjects.length || votingIds.size > 0 || loading}
               leftSection={<IconTrash size={14} />} onClick={() => void clearAllVotes()}>
               {language === 'zh' ? '一键清空' : 'Clear all'}
@@ -964,6 +979,22 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           <Stack gap="md">
             <Text size="sm" c="dimmed">{language === 'zh' ? '点赞后自动保存，可继续浏览候选人并点赞。每赛道最多4票，每次增删后跨部门票占比须至少50%。' : 'Votes are saved immediately. Keep browsing and voting alongside this panel. Up to 4 votes per category; at least 50% outside your department after every change.'}</Text>
             {voteError && <Alert color="red" role="alert">{voteError}</Alert>}
+            {user && !loading && !loadError && hackathons.filter((award) => projects.some((project) => project.hackathon_id === award.id)).map((award) => (
+              <section key={award.id} className="dp-ballot-summary" aria-label={language === 'zh' ? `${award.title} 已投票数` : `Saved votes for ${award.title}`}>
+                <Text size="sm" fw={700}>{award.title}</Text>
+                {DIGITAL_PIONEER_TRACKS.map((track) => {
+                  const count = votedProjects.filter((project) => project.hackathon_id === award.id && project.category === track.value).length
+                  return <Group key={track.value} justify="space-between" wrap="nowrap" gap="xs" mt="xs">
+                    <Text size="xs">{language === 'zh' ? track.labelZh : track.label} · {count}/{DIGITAL_PIONEER_VOTING_RULES.votesPerTrack}</Text>
+                    <Button variant="subtle" size="compact-xs" c="#c9d8ee" disabled={!count || clearingVotes || votingIds.size > 0}
+                      aria-label={language === 'zh' ? `清空 ${award.title} ${track.labelZh} 点赞` : `Clear ${award.title} ${track.label} votes`}
+                      onClick={() => void clearTrackVotes(award.id, track.value)}>
+                      {language === 'zh' ? '清空本赛道' : 'Clear category'}
+                    </Button>
+                  </Group>
+                })}
+              </section>
+            ))}
             {loadError ? (
               <Alert color="red"><Text>Unable to load nominations</Text><Button variant="subtle" onClick={() => void loadProjects()}>Retry</Button></Alert>
             ) : loading ? (
@@ -996,6 +1027,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   <Button
                     variant="light"
                     color="red"
+                    c="#ffb1b1"
                     size="xs"
                     leftSection={<IconTrash size={15} />}
                     loading={votingIds.has(project.id)}
