@@ -3,6 +3,7 @@ import { IconBallpen, IconEye } from '@tabler/icons-react'
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 import pioneerLogo from '../assets/digital-pioneer-logo.png'
+import { AwardCriteriaList } from '../components/AwardCriteriaList'
 import { useLanguage } from '../contexts/LanguageContext'
 import { DIGITAL_PIONEER_TIMELINE, DIGITAL_PIONEER_TRACKS } from '../config/digitalPioneer'
 import './DigitalPioneer.css'
@@ -56,11 +57,11 @@ export function DigitalPioneerOverview(): ReactElement {
         <div className="dp-track-grid">
           {DIGITAL_PIONEER_TRACKS.map((track) => (
             <article className="dp-track" key={track.value}>
-              <h3 className="dp-track-title">{language === 'zh' ? track.labelZh : track.label}</h3>
-              <Text className="dp-track-intro" mt="md">{track.description}</Text>
-              <ul className="dp-standard-list">
-                {track.standards.map((standard) => <li key={standard}>{standard}</li>)}
-              </ul>
+              <h3 className="dp-track-title" translate="no">
+                <span lang="en">{track.label}</span>
+                <span className="dp-track-zh" lang="zh">{track.labelZh}</span>
+              </h3>
+              <AwardCriteriaList standards={track.standards} />
             </article>
           ))}
         </div>

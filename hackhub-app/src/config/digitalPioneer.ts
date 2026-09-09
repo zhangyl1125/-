@@ -1,10 +1,15 @@
+export interface DigitalPioneerStandard {
+  text: string
+  emphasis: readonly string[]
+}
+
 export interface DigitalPioneerTrack {
   value: string
   label: string
   labelZh: string
   shorthand: string
   description: string
-  standards: readonly string[]
+  standards: readonly DigitalPioneerStandard[]
 }
 
 export const DIGITAL_PIONEER_TRACKS: readonly DigitalPioneerTrack[] = [
@@ -15,10 +20,22 @@ export const DIGITAL_PIONEER_TRACKS: readonly DigitalPioneerTrack[] = [
     shorthand: 'VALUE',
     description: 'Turn deep customer understanding into tangible, lasting value.',
     standards: [
-      'Deliver end-to-end solutions that create tangible value for customers and users.',
-      'Win customers and users with differentiated, market-leading products and services, establishing long-term win-win partnerships to co-grow capabilities and business.',
-      'Listen actively, think from the customer perspective, and uncover hidden needs and pain points.',
-      'Continuously enhance the customer experience and co-create value. Demonstrate service excellence, resolve issues beyond expectations, and transform challenges into opportunities.',
+      {
+        text: "Deliver end-to-end solutions and create tangible values for customers/users.",
+        emphasis: ["end-to-end solutions", "create tangible values"],
+      },
+      {
+        text: "Win customers/users by delivering differentiated, market-leading products and services, establishing long-term win-win partnerships to co-grow capabilities and business.",
+        emphasis: ["differentiated, market-leading products and services"],
+      },
+      {
+        text: "Listen actively to customers/users, think from their perspectives, and uncover hidden needs and pain points.",
+        emphasis: ["Listen actively", "think from their perspectives, and uncover hidden needs and pain points."],
+      },
+      {
+        text: "Continuously enhance customer experience and co-create value. Demonstrate service excellence, proactively resolving issues beyond expectations and transforming challenges into opportunities.",
+        emphasis: ["enhance customer experience", "transforming challenges into opportunities."],
+      },
     ],
   },
   {
@@ -28,10 +45,22 @@ export const DIGITAL_PIONEER_TRACKS: readonly DigitalPioneerTrack[] = [
     shorthand: 'SHIFT',
     description: 'Challenge the status quo, test boldly, and prove innovation through impact.',
     standards: [
-      'Deliver a clear breakthrough and show the courage to think outside the box and take smart risks.',
-      'Take a broader view of innovation and embed it across the entire value chain.',
-      'Pioneer cutting-edge technologies and cross-disciplinary methods to explore better paths.',
-      'Use rapid validation and continuous iteration to create sustainable business impact.',
+      {
+        text: "The innovation delivered a clear breakthrough against the status quo, shows the courage to think out of box and willingness to take smart risks.",
+        emphasis: ["think out of box"],
+      },
+      {
+        text: "Take a broader view of innovation and embed it along the entire value chain.",
+        emphasis: [],
+      },
+      {
+        text: "Never settle for existing processes or solutions, proactively pioneer the adoption of cutting-edge technologies and cross-disciplinary methodologies to explore optimal paths.",
+        emphasis: ["explore optimal paths."],
+      },
+      {
+        text: "Foster a culture of \"rapid validation and continuous iteration\", demonstrating the true value of innovation through sustainable business impact.",
+        emphasis: ["rapid validation and continuous iteration", "sustainable business impact."],
+      },
     ],
   },
   {
@@ -41,10 +70,22 @@ export const DIGITAL_PIONEER_TRACKS: readonly DigitalPioneerTrack[] = [
     shorthand: 'UNITE',
     description: 'Break boundaries, share ownership, and turn collective effort into shared success.',
     standards: [
-      'Live “Discuss – Decide – Do”: when encountering bottlenecks, swiftly align key stakeholders to drive high-quality, decisive actions.',
-      'Proactively share information and resources across boundaries to eliminate silos, foster synergy, and achieve the best solution.',
-      'Own shared goals and proactively support upstream and downstream work.',
-      'Promote and appreciate joint success, enabling the team to win as one and building trust across functions.',
+      {
+        text: "Live the \"Discuss – Decide – Do\" principle: when encountering bottlenecks, swiftly align key stakeholders to drive high-quality, decisive actions",
+        emphasis: ["Discuss – Decide – Do"],
+      },
+      {
+        text: "Proactively share information and resources across boundaries to eliminate silos and foster synergy, achieving the best solution.",
+        emphasis: ["across boundaries", "foster synergy"],
+      },
+      {
+        text: "Took ownership of shared goals, proactively support upstream and downstream tasks while completing their own work.",
+        emphasis: ["Took ownership of shared goals"],
+      },
+      {
+        text: "Promote and appreciate joint success, enabling the team to win as one and fostering trust across functions.",
+        emphasis: ["win as one"],
+      },
     ],
   },
 ] as const

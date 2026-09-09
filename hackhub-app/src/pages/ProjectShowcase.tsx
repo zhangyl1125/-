@@ -62,6 +62,7 @@ import {
   DIGITAL_PIONEER_VOTING_RULES,
   normalizeDigitalPioneerTrack,
 } from '../config/digitalPioneer'
+import { AwardCriteriaList } from '../components/AwardCriteriaList'
 import './DigitalPioneer.css'
 
 interface Project {
@@ -564,9 +565,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
             <div id="nomination-track-description" className="dp-fieldset" translate="no" aria-live="polite">
               <Title order={3}>{selectedNominationTrack.label}</Title>
               <Text className="dp-track-intro" mt="md">{selectedNominationTrack.description}</Text>
-              <ul className="dp-standard-list">
-                {selectedNominationTrack.standards.map((standard) => <li key={standard}>{standard}</li>)}
-              </ul>
+              <AwardCriteriaList standards={selectedNominationTrack.standards} />
             </div>
           )}
 

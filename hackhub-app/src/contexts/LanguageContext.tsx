@@ -10,7 +10,7 @@ const english = {
   'sidebar.navigation': 'Navigation',
   'sidebar.overview': 'Overview',
   'sidebar.overviewDescription': 'Award introduction and timeline',
-  'sidebar.nomination': 'Individual Nomination',
+  'sidebar.nomination': 'Nomination',
   'sidebar.nominationDescription': 'Submit an individual nomination',
   'sidebar.projectOverview': 'Browse & Vote',
   'sidebar.projectOverviewDescription': 'Review nominees and cast your vote',

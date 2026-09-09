@@ -186,7 +186,7 @@
 
 .award-landing__hero {
   display: flex;
-  width: min(100%, 980px);
+  width: min(100%, 1180px);
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
@@ -214,6 +214,7 @@
 
 .award-landing__headline span:nth-child(2) {
   animation-delay: 150ms;
+  font-size: clamp(40px, 7.5vw, 104px);
 }
 
 .award-landing__subhead {

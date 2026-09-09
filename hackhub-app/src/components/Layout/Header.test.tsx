@@ -51,9 +51,9 @@ describe('Header', () => {
   it('renders the user name', () => {
     renderHeader()
     expect(screen.getByText('Alice')).toBeInTheDocument()
-    expect(screen.getByText('Digital Award')).toBeInTheDocument()
+    expect(screen.getByText('Bosch Digital')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'BOSCH' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Bosch Digital Award home' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: 'Bosch Digital home' })).toHaveAttribute('href', '/')
     expect(screen.queryByText('2026 Award')).not.toBeInTheDocument()
   })
 
