@@ -1523,3 +1523,65 @@
 .dp-cta .dp-secondary-button:hover { background: rgb(95 174 255 / 15%); }
 .dp-ballot-summary > .mantine-Group-root { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
 .dp-ballot-summary .mantine-Button-root { flex-shrink: 0; height: auto; min-height: 28px; }
+
+/* Click feedback for the five framed surfaces; release restores their original state. */
+.dp-page :is(.dp-overview-hero, .dp-track, .dp-timeline-card, .dp-project-card) {
+  --dp-press-rgb: var(--track-rgb, 92 190 255);
+  transition: translate 240ms ease, scale 240ms ease, box-shadow 240ms ease,
+    border-color 200ms ease, filter 240ms ease;
+}
+
+.dp-page .dp-project-card[data-voted='true'] {
+  --dp-press-rgb: 240 138 138;
+}
+
+.dp-page :is(.dp-overview-hero, .dp-track, .dp-timeline-card, .dp-project-card):active {
+  translate: 0 -4px;
+  scale: 1.008;
+  transition-duration: 70ms;
+}
+
+.dp-page :is(.dp-overview-hero, .dp-track, .dp-project-card):active {
+  box-shadow:
+    inset 0 0 48px rgb(var(--dp-press-rgb) / 24%),
+    0 0 0 1px rgb(var(--dp-press-rgb) / 70%),
+    0 0 28px rgb(var(--dp-press-rgb) / 32%),
+    0 16px 32px rgb(0 5 24 / 35%);
+}
+
+/* Follow the timeline's cut corners instead of adding a rectangular shadow. */
+.dp-page .dp-timeline-card:active {
+  filter: brightness(1.22) drop-shadow(0 0 12px rgb(92 190 255 / 45%));
+}
+
+/* Mouse hover lifts and lights the same five framed surfaces. */
+@media (hover: hover) and (pointer: fine) {
+  .dp-page :is(.dp-overview-hero, .dp-track, .dp-timeline-card, .dp-project-card):hover {
+    translate: 0 -4px;
+    scale: 1.008;
+  }
+
+  .dp-page :is(.dp-overview-hero, .dp-track, .dp-project-card):hover {
+    box-shadow:
+      inset 0 0 48px rgb(var(--dp-press-rgb) / 24%),
+      0 0 0 1px rgb(var(--dp-press-rgb) / 70%),
+      0 0 28px rgb(var(--dp-press-rgb) / 32%),
+      0 16px 32px rgb(0 5 24 / 35%);
+  }
+
+  .dp-page .dp-timeline-card:hover {
+    filter: brightness(1.22) drop-shadow(0 0 12px rgb(92 190 255 / 45%));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-page :is(.dp-overview-hero, .dp-track, .dp-timeline-card, .dp-project-card) {
+    transition: none;
+  }
+
+  .dp-page :is(.dp-overview-hero, .dp-track, .dp-timeline-card, .dp-project-card):is(:active, :hover) {
+    translate: none;
+    scale: none;
+    transition: none;
+  }
+}
