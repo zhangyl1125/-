@@ -1,4 +1,3 @@
-import { BallotIcon } from '../components/BallotIcon'
 import {
   Container,
   Stack,
@@ -26,8 +25,8 @@ import {
 } from '@mantine/core'
 import {
   IconTrophy,
-  IconHeart,
-  IconHeartFilled,
+  IconThumbUp,
+  IconThumbUpFilled,
   IconBrandGithub,
   IconWorldWww,
   IconSearch,
@@ -54,7 +53,7 @@ import { PublicAwardService, type AwardSummary } from '../services/publicAwardSe
 import { IdeaService } from '../services/ideaService'
 import { OrganizationService } from '../services/organizationService'
 import { ProfileService } from '../services/profileService'
-import { StorageService, MAX_UPLOAD_BYTES, PHOTO_ACCEPT, PHOTO_UPLOAD_HINT, validatePersonalPhoto } from '../services/storageService'
+import { StorageService, MAX_UPLOAD_BYTES, PHOTO_ACCEPT, validatePersonalPhoto } from '../services/storageService'
 import { TeamService } from '../services/teamService'
 import { JudgingService } from '../services/judgingService'
 import {
@@ -139,6 +138,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   const [confirmClearVotes, setConfirmClearVotes] = useState(false)
   const [clearingVotes, setClearingVotes] = useState(false)
   const [cartOpened, setCartOpened] = useState(false)
+  const closeVoteCart = () => {
+    setCartOpened(false)
+    // On mobile the trigger must be visible again before it can receive focus.
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>('.dp-vote-cart-button')?.focus({ preventScroll: true })
+    })
+  }
   const [voteError, setVoteError] = useState<string | null>(null)
   const voteRequests = useRef(new Set<string>())
   const clearingVotesRef = useRef(false)
@@ -609,10 +615,10 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       </Grid.Col>
                       <Grid.Col span={{ base: 12, sm: 6 }}>
                         <FileInput
-                          label="Personal Photo"
+                          label={<><strong>Personal Photo</strong><span style={{ fontWeight: 400 }}>(JG, PNG or WebP; up to 50 MB per photo)</span></>}
+                          styles={{ label: { whiteSpace: 'nowrap' } }}
                           required
                           accept={PHOTO_ACCEPT}
-                          description={language === 'zh' ? '支持 JPG、PNG、WebP，单张照片大于 0 且不超过 50 MB。' : PHOTO_UPLOAD_HINT}
                           error={photoError ? (language === 'zh' ? (projectImage?.size === 0 ? '照片为空，请重新选择。' : projectImage && projectImage.size > MAX_UPLOAD_BYTES ? '照片超过 50 MB，请选择较小的图片。' : '请选择 JPG、PNG 或 WebP 格式的照片。') : photoError) : null}
                           leftSection={<IconPhoto size={16} />}
                           value={projectImage}
@@ -643,7 +649,6 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                           required
                           minRows={4}
                           maxLength={1200}
-                          placeholder="In 3–5 sentences, summarize your key contributions over the past year and explain why you represent the spirit of a Digital Pioneer."
                           value={uploadForm.executiveSummary}
                           onChange={(event) => setUploadForm((current) => ({ ...current, executiveSummary: event.target.value }))}
                         />
@@ -830,7 +835,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     )}
                     {project.user_vote ? (
                       <div className="dp-vote-stamp" role="status">
-                        <IconHeartFilled size={14} />
+                        <IconThumbUpFilled size={14} />
                         <span>Voted</span>
                       </div>
                     ) : null}
@@ -901,7 +906,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       disabled={clearingVotes}
                       data-voted={project.user_vote ? 'true' : 'false'}
                       variant={project.user_vote ? 'filled' : 'default'}
-                      leftSection={project.user_vote ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
+                      leftSection={project.user_vote ? <IconThumbUpFilled size={16} /> : <IconThumbUp size={16} />}
                       aria-label={project.user_vote ? `Voted, ${project.votes} votes` : `Vote, ${project.votes} votes`}
                       onClick={(event) => {
                         event.stopPropagation()
@@ -936,8 +941,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
         <Button
           className="dp-vote-cart-button"
-          leftSection={<BallotIcon size={22} />}
-          rightSection={<Badge color="white" c="grape" variant="filled">{votedProjects.length}</Badge>}
+          leftSection={<IconThumbUp size={22} />}
+          rightSection={<Badge className="dp-vote-cart-count" variant="filled">{votedProjects.length}</Badge>}
           aria-label={language === 'zh' ? `我的点赞（${votedProjects.length}）` : `My votes (${votedProjects.length})`}
           aria-controls="vote-cart"
           aria-haspopup="dialog"
@@ -955,8 +960,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           aria-labelledby="vote-cart-title"
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
-              setCartOpened(false)
-              document.querySelector<HTMLButtonElement>('.dp-vote-cart-button')?.focus()
+              closeVoteCart()
             }
           }}
         >
@@ -968,10 +972,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               leftSection={<IconTrash size={14} />} onClick={() => void clearAllVotes()}>
               {language === 'zh' ? '一键清空' : 'Clear all'}
             </Button>
-            <CloseButton aria-label={language === 'zh' ? '关闭我的点赞' : 'Close my votes'} onClick={() => {
-              setCartOpened(false)
-              document.querySelector<HTMLButtonElement>('.dp-vote-cart-button')?.focus()
-            }} />
+            <CloseButton aria-label={language === 'zh' ? '关闭我的点赞' : 'Close my votes'} onClick={closeVoteCart} />
             </Group>
           </Group>
           <div className="dp-vote-cart-body">
@@ -1000,15 +1001,15 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               <Text c="dimmed">Loading nominations…</Text>
             ) : !user ? (
               <Stack align="center" py="xl">
-                <BallotIcon size={40} />
+                <IconThumbUp size={40} />
                 <Text>{language === 'zh' ? '登录后查看已点赞的候选人' : 'Sign in to view your votes'}</Text>
                 <Button onClick={() => navigate('/login?redirect=%2Fprojects')}>{language === 'zh' ? '登录' : 'Sign in'}</Button>
               </Stack>
             ) : votedProjects.length === 0 ? (
               <Stack align="center" py="xl">
-                <BallotIcon size={40} />
+                <IconThumbUp size={40} />
                 <Text>{language === 'zh' ? '还没有点赞的候选人' : 'No votes yet'}</Text>
-                <Button variant="light" onClick={() => setCartOpened(false)}>{language === 'zh' ? '继续浏览候选人' : 'Browse nominees'}</Button>
+                <Button variant="light" onClick={closeVoteCart}>{language === 'zh' ? '继续浏览候选人' : 'Browse nominees'}</Button>
               </Stack>
             ) : votedProjects.map((project) => (
               <div className="dp-vote-cart-item" key={project.id}>
@@ -1139,7 +1140,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
             <Button
               fullWidth
               loading={votingIds.has(selectedProject.id)}
-              leftSection={selectedProject.user_vote ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
+              leftSection={selectedProject.user_vote ? <IconThumbUpFilled size={16} /> : <IconThumbUp size={16} />}
               variant={selectedProject.user_vote ? 'filled' : 'light'}
               color="red"
               onClick={() => handleVote(selectedProject.id)}
