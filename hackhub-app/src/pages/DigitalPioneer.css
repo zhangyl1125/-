@@ -971,6 +971,44 @@
   animation: dp-form-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.dp-nomination-flow > .dp-form-shell {
+  --track-rgb: 24 145 255;
+  --dp-muted: #ffffff;
+  --dp-orchid: #ffffff;
+  --mantine-color-text: #ffffff;
+  --mantine-color-dimmed: #ffffff;
+  color: #ffffff;
+  background:
+    linear-gradient(140deg, rgb(var(--track-rgb) / 20%), transparent 35%),
+    linear-gradient(160deg, rgb(2 24 63 / 80%), rgb(2 16 49 / 74%) 70%, rgb(var(--track-rgb) / 16%));
+}
+
+.dp-nomination-flow:has(.dp-nomination-track:nth-child(2)[data-active='true']) > .dp-form-shell {
+  --track-rgb: 131 85 255;
+}
+
+.dp-nomination-flow:has(.dp-nomination-track:nth-child(3)[data-active='true']) > .dp-form-shell {
+  --track-rgb: 0 190 218;
+}
+
+.dp-nomination-flow > .dp-form-shell :where(.mantine-Input-input, .mantine-Textarea-input) {
+  color: #ffffff;
+  background: rgb(2 16 49 / 74%);
+}
+
+.dp-nomination-flow > .dp-form-shell :where(.mantine-Input-input, .mantine-Textarea-input):focus {
+  background: rgb(2 24 63 / 90%);
+}
+
+.dp-nomination-flow > .dp-form-shell :where(.mantine-Input-input, .mantine-Textarea-input)::placeholder {
+  color: #ffffff;
+  opacity: 1;
+}
+
+.dp-nomination-flow > .dp-form-shell :where(.mantine-Input-section, .mantine-InputPlaceholder-placeholder, .mantine-Badge-label) {
+  color: #ffffff;
+}
+
 .dp-form-intro {
   margin-bottom: 26px;
   padding-bottom: 22px;
