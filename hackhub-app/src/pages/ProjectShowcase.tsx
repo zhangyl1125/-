@@ -690,8 +690,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <TextInput
-                          label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags you want to add</span></>}
-                          description={tagHint}
+                          label={<><span className="dp-question-number" aria-hidden="true">04</span><span>Tags you want to add(Add up to 5 tags, separated by 、, ， or commas (,))</span></>}
+                          styles={{ label: { whiteSpace: 'nowrap' } }}
                           error={tooManyTags ? tagHint : undefined}
                           value={uploadForm.technologies}
                           onChange={(event) => setUploadForm((current) => ({ ...current, technologies: event.target.value }))}
