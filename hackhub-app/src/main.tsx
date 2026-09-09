@@ -33,6 +33,7 @@ createRoot(document.getElementById('root')!).render(
           defaultRadius: 'md',
           fontFamily: 'var(--app-font-body)',
           fontSizes: { xs: '0.875rem', sm: '0.9375rem' },
+          lineHeights: { xs: '1.65', sm: '1.7', md: '1.75', lg: '1.75', xl: '1.8' },
           headings: { fontFamily: 'var(--app-font-body)' },
         }}
       >

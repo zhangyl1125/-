@@ -2,7 +2,7 @@ import { Button, Container, Grid, Group, Stack, Text } from '@mantine/core'
 import { IconBallpen, IconEye } from '@tabler/icons-react'
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
-import pioneerLogo from '../assets/digital-pioneer-logo.png'
+import digitalCubes from '../assets/bosch-digital-cubes.png'
 import { AwardCriteriaList } from '../components/AwardCriteriaList'
 import { useLanguage } from '../contexts/LanguageContext'
 import { DIGITAL_PIONEER_TIMELINE, DIGITAL_PIONEER_TRACKS } from '../config/digitalPioneer'
@@ -13,7 +13,7 @@ const copy = {
     nominate: 'Start a nomination',
     browse: 'Browse & vote',
     categoriesTitle: 'Award categories and criteria',
-    timelineTitle: '2026 selection timeline',
+    timelineTitle: '2026 Timeline',
   },
   zh: {
     nominate: '开始报名',
@@ -44,8 +44,7 @@ export function DigitalPioneerOverview(): ReactElement {
 
           <Grid.Col span={{ base: 12, lg: 5 }}>
             <div className="dp-overview-logo-wrap">
-              <img className="dp-overview-logo" src={pioneerLogo} alt="2026 BDCN Digital Pioneer" width={1254} height={1254} />
-              <span className="dp-overview-logo-lettering" aria-hidden="true" style={{ maskImage: `url(${pioneerLogo})`, WebkitMaskImage: `url(${pioneerLogo})` }} />
+              <img className="dp-overview-logo" src={digitalCubes} alt="Bosch Digital Cubes" width={1254} height={1254} style={{ aspectRatio: '1', objectFit: 'contain' }} />
             </div>
           </Grid.Col>
         </Grid>
@@ -72,10 +71,10 @@ export function DigitalPioneerOverview(): ReactElement {
         <div className="dp-timeline">
           {DIGITAL_PIONEER_TIMELINE.map((item, index) => (
             <article className="dp-timeline-item" key={item.phase}>
-              <Text className="dp-timeline-period">{item.period}</Text>
               <span className="dp-timeline-node" aria-hidden="true" />
               <div className="dp-timeline-card">
                 <span className="dp-timeline-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+                <Text className="dp-timeline-period">{item.period}</Text>
                 <h3 className="dp-timeline-phase" translate="no">{item.phase}</h3>
               </div>
             </article>
@@ -84,11 +83,12 @@ export function DigitalPioneerOverview(): ReactElement {
       </section>
 
       <section className="dp-cta" aria-label={text.nominate}>
-        <Group gap="sm" justify="flex-end">
+        <Group gap="sm" justify="center">
           <Button
             component={Link}
             to="/nominate"
             className="dp-primary-button"
+            size="lg"
             leftSection={<IconBallpen size={18} />}
           >
             {text.nominate}
@@ -98,6 +98,7 @@ export function DigitalPioneerOverview(): ReactElement {
             to="/projects"
             variant="default"
             className="dp-secondary-button"
+            size="lg"
             leftSection={<IconEye size={18} />}
           >
             {text.browse}

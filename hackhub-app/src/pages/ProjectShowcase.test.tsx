@@ -161,12 +161,12 @@ describe('ProjectShowcase', () => {
     expect(valueTrack).toHaveAttribute('aria-checked', 'true')
     expect(await screen.findByRole('textbox', { name: /Award Category/ })).toHaveValue('Customer Values')
     expect(screen.queryByRole('textbox', { name: /Contribution title/ })).not.toBeInTheDocument()
-    expect(document.getElementById('nomination-track-description')).toHaveTextContent('Turn deep customer understanding into tangible, lasting value.')
+    expect(document.getElementById('nomination-track-description')).toHaveTextContent('Deliver end-to-end solutions and create tangible values for customers/users.')
     await user.type(screen.getByRole('textbox', { name: /Executive Summary/ }), 'Keep this contribution when switching categories.')
     await user.click(screen.getByRole('textbox', { name: 'Award Category' }))
     await user.click(await screen.findByRole('option', { name: 'Collaboration to Win' }))
     expect(screen.getByRole('radio', { name: /Collaboration to Win/ })).toHaveAttribute('aria-checked', 'true')
-    expect(document.getElementById('nomination-track-description')).toHaveTextContent('Break boundaries, share ownership, and turn collective effort into shared success.')
+    expect(document.getElementById('nomination-track-description')).toHaveTextContent('Took ownership of shared goals, proactively support upstream and downstream tasks while completing their own work.')
     expect(screen.getByRole('textbox', { name: /Executive Summary/ })).toHaveValue('Keep this contribution when switching categories.')
   })
 
@@ -351,7 +351,7 @@ describe('ProjectShowcase', () => {
     expect(screen.queryByRole('textbox', { name: /Executive Summary/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: /Innovation Breakthrough/ }))
     expect(screen.getByRole('textbox', { name: /Executive Summary \(The Elevator Pitch\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /Details of Core achievement and business impact/ })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Details of Your Core Achievement in 2026 and Business Impact/ })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /How you demonstrate BD China culture/ })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Tags you want to add/ })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Award Category/ })).toHaveValue('Innovation Breakthrough')
@@ -395,7 +395,7 @@ describe('ProjectShowcase', () => {
 
     await user.click(await screen.findByRole('radio', { name: /Customer Values/ }))
     await user.type(screen.getByRole('textbox', { name: /Executive Summary/ }), 'A better customer experience in four clear sentences.')
-    await user.type(screen.getByRole('textbox', { name: /Details of Core achievement and business impact/ }), 'Reduced service time by 30% and saved RMB 200,000.')
+    await user.type(screen.getByRole('textbox', { name: /Details of Your Core Achievement in 2026 and Business Impact/ }), 'Reduced service time by 30% and saved RMB 200,000.')
     await user.type(screen.getByRole('textbox', { name: /How you demonstrate BD China culture/ }), 'Listened to users and delivered an end-to-end solution.')
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
     expect(fileInput).not.toBeNull()
@@ -432,7 +432,7 @@ describe('ProjectShowcase', () => {
       projectAttachments: expect.arrayContaining([expect.objectContaining({ type: 'nomination', nomineeUserId: 'user-1', name: 'User' })]),
     }))
     expect(createIdea).toHaveBeenCalledWith(expect.objectContaining({
-      description: expect.stringContaining('Details of Core Achievement and Business Impact (Including Financial Figures)'),
+      description: expect.stringContaining('Details of Your Core Achievement in 2026 and Business Impact (including financial figures)'),
     }))
     expect(createIdea).toHaveBeenCalledTimes(1)
     expect(updateIdea).not.toHaveBeenCalled()

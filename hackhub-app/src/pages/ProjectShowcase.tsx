@@ -1,3 +1,4 @@
+import { BallotIcon } from '../components/BallotIcon'
 import {
   Container,
   Stack,
@@ -38,7 +39,6 @@ import {
   IconInfoCircle,
   IconPhoto,
   IconCheck,
-  IconShoppingCart,
   IconTrash,
 } from '@tabler/icons-react'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -326,7 +326,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
       const technologies = nominationTags
       const description = [
         `Executive Summary\n${uploadForm.executiveSummary.trim()}`,
-        `Details of Core Achievement and Business Impact (Including Financial Figures)\n${uploadForm.achievementImpact.trim()}`,
+        `Details of Your Core Achievement in 2026 and Business Impact (including financial figures)\n${uploadForm.achievementImpact.trim()}`,
         `How You Demonstrate Bosch China Culture (Especially in Your Applied Category)\n${uploadForm.cultureDemonstration.trim()}`,
       ].join('\n\n')
       const uploadedImage = await StorageService.uploadFile(
@@ -540,7 +540,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               return (
                 <UnstyledButton
                   key={track.value}
-                  className="dp-nomination-track"
+                  className="dp-track dp-nomination-track"
                   data-active={isSelected}
                   role="radio"
                   aria-checked={isSelected}
@@ -555,7 +555,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     </span>
                   </span>
                   <span className="dp-nomination-track__name">{track.label}</span>
-                  <span className="dp-nomination-track__description">{track.description}</span>
+                  <span className="dp-nomination-track__description" lang="zh">{track.labelZh}</span>
                 </UnstyledButton>
               )
             })}
@@ -564,7 +564,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           {selectedNominationTrack && (
             <div id="nomination-track-description" className="dp-fieldset" translate="no" aria-live="polite">
               <Title order={3}>{selectedNominationTrack.label}</Title>
-              <Text className="dp-track-intro" mt="md">{selectedNominationTrack.description}</Text>
+              <Text mt="sm" lang="zh">{selectedNominationTrack.labelZh}</Text>
               <AwardCriteriaList standards={selectedNominationTrack.standards} />
             </div>
           )}
@@ -655,7 +655,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                     <div className="dp-nomination-question">
                       <div style={{ minWidth: 0 }}>
                         <Textarea
-                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Details of Core achievement and business impact (*including Financial Figures)</span></>}
+                          label={<><span className="dp-question-number" aria-hidden="true">02</span><span>Details of Your Core Achievement in 2026 and Business Impact (including financial figures)</span></>}
                           required
                           minRows={4}
                           maxLength={2400}
@@ -936,7 +936,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
 
         <Button
           className="dp-vote-cart-button"
-          leftSection={<IconShoppingCart size={22} />}
+          leftSection={<BallotIcon size={22} />}
           rightSection={<Badge color="white" c="grape" variant="filled">{votedProjects.length}</Badge>}
           aria-label={language === 'zh' ? `我的点赞（${votedProjects.length}）` : `My votes (${votedProjects.length})`}
           aria-controls="vote-cart"
@@ -1000,13 +1000,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               <Text c="dimmed">Loading nominations…</Text>
             ) : !user ? (
               <Stack align="center" py="xl">
-                <IconShoppingCart size={40} />
+                <BallotIcon size={40} />
                 <Text>{language === 'zh' ? '登录后查看已点赞的候选人' : 'Sign in to view your votes'}</Text>
                 <Button onClick={() => navigate('/login?redirect=%2Fprojects')}>{language === 'zh' ? '登录' : 'Sign in'}</Button>
               </Stack>
             ) : votedProjects.length === 0 ? (
               <Stack align="center" py="xl">
-                <IconShoppingCart size={40} />
+                <BallotIcon size={40} />
                 <Text>{language === 'zh' ? '还没有点赞的候选人' : 'No votes yet'}</Text>
                 <Button variant="light" onClick={() => setCartOpened(false)}>{language === 'zh' ? '继续浏览候选人' : 'Browse nominees'}</Button>
               </Stack>
