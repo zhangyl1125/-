@@ -136,6 +136,10 @@ export class IdeaService {
     return api.delete(`/api/v1/ideas/${id}`)
   }
 
+  static async deleteIdeas(ids: string[]): Promise<void> {
+    return api.post('/api/v1/ideas/batch-delete', { ids })
+  }
+
   /** Toggle vote — returns new state. Previously broken due to Supabase 406 errors. */
   static async voteIdea(ideaId: string): Promise<VoteResult> {
     return api.post(`/api/v1/ideas/${ideaId}/votes`)

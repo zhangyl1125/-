@@ -127,18 +127,39 @@ class IdeaControllerTest {
 	}
 
 	@Test
-	void delete_idea_returns_204() throws Exception {
-		mvc.perform(delete("/api/v1/ideas/" + IDEA_ID).with(MockAuthHelper.asParticipant(USER_ID)))
+	void delete_idea_returns_204_for_admin() throws Exception {
+		mvc.perform(delete("/api/v1/ideas/" + IDEA_ID).with(MockAuthHelper.asAdmin(USER_ID)))
 				.andExpect(status().isNoContent());
 		verify(submitIdeaUseCase).delete(IDEA_ID, USER_ID);
 	}
 
 	@Test
-	void delete_by_non_owner_returns_403() throws Exception {
-		doThrow(new SubmitIdeaUseCase.IdeaAccessDeniedException(IDEA_ID, USER_ID)).when(submitIdeaUseCase).delete(any(),
-				any());
-		mvc.perform(delete("/api/v1/ideas/" + IDEA_ID).with(MockAuthHelper.asParticipant(USER_ID)))
-				.andExpect(status().isForbidden());
+	void only_admin_can_delete_single_or_batch() throws Exception {
+		for (var auth : List.of(MockAuthHelper.asParticipant(USER_ID), MockAuthHelper.asManager(USER_ID))) {
+			mvc.perform(delete("/api/v1/ideas/" + IDEA_ID).with(auth)).andExpect(status().isForbidden());
+			mvc.perform(post("/api/v1/ideas/batch-delete").with(auth).contentType(MediaType.APPLICATION_JSON)
+					.content("{\"ids\":[\"" + IDEA_ID + "\"]}")).andExpect(status().isForbidden());
+		}
+		verifyNoInteractions(submitIdeaUseCase);
+	}
+
+	@Test
+	void batch_requires_authentication_and_nonempty_ids() throws Exception {
+		mvc.perform(post("/api/v1/ideas/batch-delete").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"ids\":[\"" + IDEA_ID + "\"]}")).andExpect(status().isUnauthorized());
+		for (String body : List.of("{}", "{\"ids\":[]}", "{\"ids\":[null]}")) {
+			mvc.perform(post("/api/v1/ideas/batch-delete").with(MockAuthHelper.asAdmin(USER_ID))
+					.contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
+		}
+		verifyNoInteractions(submitIdeaUseCase);
+	}
+
+	@Test
+	void admin_can_delete_batch() throws Exception {
+		mvc.perform(post("/api/v1/ideas/batch-delete").with(MockAuthHelper.asAdmin(USER_ID))
+				.contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[\"" + IDEA_ID + "\"]}"))
+				.andExpect(status().isNoContent());
+		verify(submitIdeaUseCase).deleteMany(List.of(IDEA_ID), USER_ID);
 	}
 
 	@Test

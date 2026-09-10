@@ -170,7 +170,7 @@ export function AwardManagement() {
             <Card className="dp-form-shell" p={{ base: 'lg', md: 32 }}>
               <Title order={3}>Evaluation standard</Title>
               {DIGITAL_PIONEER_RUBRIC.map((criterion) => <Text key={criterion.key} mt="md"><strong>{criterion.name} · {criterion.weight}%</strong><br />{criterion.description}</Text>)}
-              {canManage && <Text mt="lg" c="white">Associate voting: up to 4 votes per category. At least 50% must be outside the voter's department after every vote or withdrawal. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
+              {canManage && <Text mt="lg" c="white">Associate voting: up to 4 votes per category. Up to 2 votes may go to the voter's department and up to 2 to other departments. Both allowances are optional, with no voting or withdrawal order. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.</Text>}
             </Card>
           </>
         )}

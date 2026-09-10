@@ -95,9 +95,22 @@ public class IdeaController {
 			@ApiResponse(responseCode = "401", description = "Not authenticated"),
 			@ApiResponse(responseCode = "404", description = "Idea not found")})
 	@DeleteMapping("/api/v1/ideas/{id}")
+	@PreAuthorize("hasRole('ADMIN')")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void delete(@PathVariable UUID id, @AuthenticationPrincipal UUID userId) {
 		submitIdeaUseCase.delete(id, userId);
+	}
+
+	@Operation(summary = "Delete selected nominations as an administrator")
+	@PostMapping("/api/v1/ideas/batch-delete")
+	@PreAuthorize("hasRole('ADMIN')")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteMany(@Valid @RequestBody DeleteIdeasRequest req, @AuthenticationPrincipal UUID userId) {
+		submitIdeaUseCase.deleteMany(req.ids(), userId);
+	}
+
+	public record DeleteIdeasRequest(
+			@jakarta.validation.constraints.NotEmpty List<@jakarta.validation.constraints.NotNull UUID> ids) {
 	}
 
 	@Operation(summary = "Toggle a vote on an idea")

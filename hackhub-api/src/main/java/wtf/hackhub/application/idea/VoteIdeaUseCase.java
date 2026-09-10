@@ -56,32 +56,29 @@ public class VoteIdeaUseCase {
 
 		VotingParticipant voter = directory.resolveParticipant(voterProfile)
 				.orElseThrow(() -> new ParticipantNotEligibleException(userId));
+		if (existing.isPresent()) {
+			voteRepository.delete(existing.get());
+			return new Result(false, voteRepository.countByIdeaId(ideaId));
+		}
 		List<IdeaVote> currentVotes = voteRepository.findAllByUserIdAndHackathonId(userId, idea.getHackathonId());
 		List<Idea> currentTrackIdeas = currentVotes.stream()
-				.filter(vote -> existing.isEmpty() || !vote.getIdeaId().equals(ideaId)).map(IdeaVote::getIdeaId)
+				.map(IdeaVote::getIdeaId)
 				.map(ideaRepository::findById).flatMap(Optional::stream)
 				.filter(votedIdea -> track(idea).equals(track(votedIdea))).toList();
-		if (existing.isEmpty() && currentTrackIdeas.size() >= maxVotesPerTrack) {
+		if (currentTrackIdeas.size() >= maxVotesPerTrack) {
 			throw new VoteLimitExceededException(maxVotesPerTrack);
 		}
 		String voterDepartment = departmentCode(voter.getOrganizationalUnit());
 		long ownVotes = currentTrackIdeas.stream().map(this::resolveProjectOwner)
 				.map(VotingParticipant::getOrganizationalUnit).map(VoteIdeaUseCase::departmentCode)
 				.filter(voterDepartment::equalsIgnoreCase).count();
-		int resultingTotal = currentTrackIdeas.size();
-		if (existing.isEmpty()) {
-			resultingTotal++;
-			if (voterDepartment.equalsIgnoreCase(departmentCode(resolveProjectOwner(idea).getOrganizationalUnit())))
-				ownVotes++;
+		boolean ownDepartment = voterDepartment
+				.equalsIgnoreCase(departmentCode(resolveProjectOwner(idea).getOrganizationalUnit()));
+		if (ownDepartment && ownVotes >= 2) {
+			throw new OwnDepartmentVoteLimitExceededException(voterDepartment, 2);
 		}
-		if (ownVotes * 2 > resultingTotal) {
-			throw new IllegalArgumentException(existing.isPresent()
-					? "Keep at least 50% of your votes outside your department. Remove a same-department vote first."
-					: "At least 50% of your votes must go outside your department. Vote for another department first.");
-		}
-		if (existing.isPresent()) {
-			voteRepository.delete(existing.get());
-			return new Result(false, voteRepository.countByIdeaId(ideaId));
+		if (!ownDepartment && currentTrackIdeas.size() - ownVotes >= 2) {
+			throw new IllegalArgumentException("At most 2 votes per award category may go outside your department.");
 		}
 
 		voteRepository.save(new IdeaVote(ideaId, userId));

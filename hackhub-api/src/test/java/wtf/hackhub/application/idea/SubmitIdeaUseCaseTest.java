@@ -126,22 +126,59 @@ class SubmitIdeaUseCaseTest {
 				Idea.Status.DRAFT, null, null, null)).isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
 	}
 
-	@Test
-	void delete_by_non_owner_throws() {
-		Idea existing = idea(UUID.randomUUID());
-		when(ideaRepository.findById(any())).thenReturn(Optional.of(existing));
-
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.EnumSource(value = wtf.hackhub.domain.Profile.Role.class, names = {"PARTICIPANT", "MANAGER"})
+	void delete_rejects_non_admin_even_if_owner(wtf.hackhub.domain.Profile.Role role) {
+		var requester = new wtf.hackhub.domain.Profile("user@test.com", "User", "hash");
+		requester.changeRole(role);
+		when(profileRepository.findById(USER_ID)).thenReturn(Optional.of(requester));
 		assertThatThrownBy(() -> useCase.delete(UUID.randomUUID(), USER_ID))
 				.isInstanceOf(SubmitIdeaUseCase.IdeaAccessDeniedException.class);
+		org.mockito.Mockito.verifyNoInteractions(ideaRepository, mutationLock);
 	}
 
 	@Test
-	void delete_by_owner_succeeds() {
-		Idea existing = idea(USER_ID);
-		when(ideaRepository.findById(any())).thenReturn(Optional.of(existing));
-
+	void admin_deletes_another_owners_voted_nomination() {
+		stubAdmin();
+		Idea existing = idea(UUID.randomUUID());
+		org.springframework.test.util.ReflectionTestUtils.setField(existing, "id", UUID.randomUUID());
+		org.springframework.test.util.ReflectionTestUtils.setField(existing, "votes", 2);
+		when(ideaRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
 		useCase.delete(existing.getId(), USER_ID);
-		verify(ideaRepository).delete(existing);
+		verify(ideaRepository).deleteAll(List.of(existing));
+		verify(ideaRepository).flush();
+	}
+
+	@Test
+	void batch_validates_all_ids_before_deleting() {
+		stubAdmin();
+		UUID missing = UUID.randomUUID();
+		when(ideaRepository.findById(missing)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> useCase.deleteMany(List.of(missing), USER_ID))
+				.isInstanceOf(VoteIdeaUseCase.IdeaNotFoundException.class);
+		verify(ideaRepository, org.mockito.Mockito.never()).deleteAll(org.mockito.ArgumentMatchers.anyIterable());
+	}
+
+	@Test
+	void batch_deduplicates_and_locks_in_stable_order() {
+		stubAdmin();
+		Idea first = idea(USER_ID), second = idea(UUID.randomUUID());
+		org.springframework.test.util.ReflectionTestUtils.setField(first, "id", UUID.randomUUID());
+		org.springframework.test.util.ReflectionTestUtils.setField(second, "id", UUID.randomUUID());
+		when(ideaRepository.findById(first.getId())).thenReturn(Optional.of(first));
+		when(ideaRepository.findById(second.getId())).thenReturn(Optional.of(second));
+		useCase.deleteMany(List.of(second.getId(), first.getId(), second.getId()), USER_ID);
+		var ids = List.of(first.getId(), second.getId()).stream().sorted().toList();
+		var ordered = org.mockito.Mockito.inOrder(mutationLock, ideaRepository);
+		for (UUID id : ids) ordered.verify(mutationLock).acquire(id);
+		for (UUID id : ids) ordered.verify(ideaRepository).findById(id);
+		verify(ideaRepository).deleteAll(org.mockito.ArgumentMatchers.argThat(items -> java.util.stream.StreamSupport.stream(items.spliterator(), false).count() == 2));
+	}
+
+	private void stubAdmin() {
+		var requester = new wtf.hackhub.domain.Profile("admin@test.com", "Admin", "hash");
+		requester.changeRole(wtf.hackhub.domain.Profile.Role.ADMIN);
+		when(profileRepository.findById(USER_ID)).thenReturn(Optional.of(requester));
 	}
 
 	@Test

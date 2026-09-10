@@ -168,16 +168,27 @@ public class SubmitIdeaUseCase {
 
 	@Transactional
 	public void delete(UUID ideaId, UUID requestingUserId) {
-		mutationLock.acquire(ideaId);
-		Idea idea = ideaRepository.findById(ideaId)
-				.orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(ideaId));
-		if (!idea.getCreatedBy().equals(requestingUserId)) {
-			throw new IdeaAccessDeniedException(ideaId, requestingUserId);
+		deleteMany(List.of(ideaId), requestingUserId);
+	}
+
+	@Transactional
+	public void deleteMany(List<UUID> ideaIds, UUID requestingUserId) {
+		var requester = profileRepository.findById(requestingUserId)
+				.orElseThrow(() -> new IdeaAccessDeniedException(null, requestingUserId));
+		if (requester.getRole() != Profile.Role.ADMIN) {
+			throw new IdeaAccessDeniedException(null, requestingUserId);
 		}
-		if (idea.getVotes() > 0 || !judgeScoreRepository.findAllByIdeaId(ideaId).isEmpty()) {
-			throw new IllegalArgumentException("A nomination with votes or committee ratings cannot be deleted.");
+		if (ideaIds == null || ideaIds.isEmpty() || ideaIds.stream().anyMatch(java.util.Objects::isNull)) {
+			throw new IllegalArgumentException("Select at least one nomination to delete.");
 		}
-		ideaRepository.delete(idea);
+		// Stable lock order prevents overlapping batches from deadlocking with each other.
+		var ids = ideaIds.stream().distinct().sorted().toList();
+		ids.forEach(mutationLock::acquire);
+		var ideas = ids.stream().map(id -> ideaRepository.findById(id)
+				.orElseThrow(() -> new VoteIdeaUseCase.IdeaNotFoundException(id))).toList();
+		// Existing foreign keys cascade votes, comments and scores in the same transaction.
+		ideaRepository.deleteAll(ideas);
+		ideaRepository.flush();
 	}
 
 	public static class IdeaAccessDeniedException extends RuntimeException {

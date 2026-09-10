@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   IconArrowUpRight,
   IconMenu2,
@@ -18,10 +18,25 @@ const landingPosterSrc = '/media/tech-blue-poster.jpg'
 
 export function LandingPage({ children }: { children?: ReactNode }) {
   const { user, logout } = useAuthStore()
-  const { language, toggleLanguage, t } = useLanguage()
+  const { language, setLanguage, toggleLanguage, t } = useLanguage()
   const { canReview, canManage } = useAwardAccess()
   const { pathname, hash } = useLocation()
   const showHero = pathname === '/' || pathname === '/overview'
+  const isPreviewPage = pathname === '/projects'
+  const previousLanguage = useRef(language)
+
+  useLayoutEffect(() => {
+    if (!isPreviewPage) {
+      previousLanguage.current = language
+    }
+  }, [isPreviewPage, language])
+
+  useLayoutEffect(() => {
+    if (!isPreviewPage) return
+    const restoreLanguage = previousLanguage.current
+    setLanguage('en')
+    return () => setLanguage(restoreLanguage)
+  }, [isPreviewPage, setLanguage])
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
@@ -111,9 +126,9 @@ export function LandingPage({ children }: { children?: ReactNode }) {
         </nav>
 
         <Group className="award-landing__account" gap="sm" wrap="nowrap">
-          <UnstyledButton onClick={toggleLanguage} aria-label={language === 'zh' ? '切换到英文' : 'Switch to Chinese'}>
+          {!isPreviewPage && <UnstyledButton onClick={toggleLanguage} aria-label={language === 'zh' ? '切换到英文' : 'Switch to Chinese'}>
             <Text size="sm" fw={600}>{language === 'zh' ? '中' : 'EN'}</Text>
-          </UnstyledButton>
+          </UnstyledButton>}
           {user && <Menu shadow="md" width={220}>
             <Menu.Target>
               <UnstyledButton aria-label={user.name}>
@@ -125,6 +140,7 @@ export function LandingPage({ children }: { children?: ReactNode }) {
             </Menu.Target>
             <Menu.Dropdown>
               {canReview && <Menu.Item component={Link} to="/awards">{canManage ? (language === 'zh' ? '评选管理' : 'Award management') : (language === 'zh' ? '组委会评分' : 'Committee scoring')}</Menu.Item>}
+              {user.role === 'admin' && <Menu.Item component={Link} to="/admin/nominees">{language === 'zh' ? '提名管理' : 'Manage nominees'}</Menu.Item>}
               {canManage && <Menu.Item component={Link} to="/admin/users">{t('sidebar.manageUsers')}</Menu.Item>}
               <Menu.Item component={Link} to="/profile">{t('header.profile')}</Menu.Item>
               <Menu.Item color="red" onClick={() => void logout()}>{t('header.logout')}</Menu.Item>

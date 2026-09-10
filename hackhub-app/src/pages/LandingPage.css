@@ -227,26 +227,50 @@
 }
 
 .award-landing .award-landing__cta {
-  gap: 7px;
+  gap: 14px;
   margin-top: clamp(24px, 4vh, 38px);
-  padding: 14px 20px 14px 24px;
-  background: var(--landing-paper);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 26px rgba(255, 255, 255, 0.28);
-  color: #09090a;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 24px rgba(255, 255, 255, 0.2), inset 0 1px rgba(255, 255, 255, 0.12);
+  color: #eef8ff;
   font-size: 14px;
   font-weight: 650;
-  transition: box-shadow 220ms ease, transform 220ms ease;
+  transition: background-color 220ms ease, box-shadow 220ms ease;
 }
 
 .award-landing__cta > span {
   position: relative;
   z-index: 1;
-  color: #09090a;
+  color: inherit;
 }
 
-.award-landing__cta:hover {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28), 0 0 34px rgba(255, 255, 255, 0.42);
-  transform: translateY(-2px) scale(1.015);
+.award-landing__cta::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-right: 2px solid #a6e2ff;
+  border-bottom: 2px solid #a6e2ff;
+  transform: translateY(-3px) rotate(45deg);
+  animation: award-cta-arrow 1.8s ease-in-out infinite;
+}
+
+.award-landing .award-landing__cta:hover,
+.award-landing .award-landing__cta:focus-visible {
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.95), 0 0 32px rgba(255, 255, 255, 0.35), inset 0 1px rgba(255, 255, 255, 0.16);
+}
+
+@keyframes award-cta-arrow {
+  0%, 100% { opacity: 0.4; transform: translateY(-3px) rotate(45deg); }
+  50% { opacity: 1; transform: translateY(2px) rotate(45deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .award-landing__cta::after {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .award-landing__reveal {

@@ -22,6 +22,7 @@ import {
   FileInput,
   Textarea,
   UnstyledButton,
+  Checkbox,
 } from '@mantine/core'
 import {
   IconTrophy,
@@ -93,7 +94,6 @@ interface Project {
 interface ProjectFilters {
   search: string
   category: string
-  technology: string
   department: string
 }
 
@@ -122,13 +122,54 @@ const parseNominationTags = (value: string): string[] =>
 
 const tagHint = 'Add up to 5 tags, separated by 、, ， or commas (,).'
 
-export function ProjectShowcase({ nominationMode = false }: { nominationMode?: boolean }) {
+const nominationHeadings = [
+  'Executive Summary (The Elevator Pitch)',
+  'Details of Your Core Achievement in 2026 and Business Impact (including financial figures)',
+  'How you demonstrate BD China culture (especially on you applied category) ?',
+]
+
+function parseNominationDescription(description: string) {
+  const sections: Array<{ heading: string; body: string }> = []
+  let heading = ''
+  let lines: string[] = []
+  for (const line of description.split(/\r?\n/)) {
+    const label = line.trim().replace(/^\*\*|\*\*$/g, '')
+    const index = /^Executive Summary(?: \(The Elevator Pitch\))?$/i.test(label) ? 0
+      : label === nominationHeadings[1] ? 1
+      : /^How you demonstrate (?:Bosch|BD) China culture \(especially (?:in your|on you) applied category\)\s*\??$/i.test(label) ? 2
+      : -1
+    if (index >= 0) {
+      if (heading || lines.join('\n').trim()) sections.push({ heading, body: lines.join('\n').trim() })
+      heading = nominationHeadings[index]
+      lines = []
+    } else {
+      lines.push(line)
+    }
+  }
+  if (heading || lines.join('\n').trim()) sections.push({ heading, body: lines.join('\n').trim() })
+  return sections
+}
+
+function nominationSummary(description: string) {
+  const sections = parseNominationDescription(description)
+  return sections.find((section) => section.heading === nominationHeadings[0])?.body
+    ?? sections.find((section) => !section.heading)?.body ?? ''
+}
+
+export function ProjectShowcase({ nominationMode = false, managementMode = false }: { nominationMode?: boolean; managementMode?: boolean }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { language } = useLanguage()
   const [searchParams] = useSearchParams()
   const nomineeToOpen = searchParams.get('nominee')
   const canNominate = user?.role === 'admin' || user?.role === 'manager'
+  const canDelete = managementMode && user?.role === 'admin'
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [pendingDeletion, setPendingDeletion] = useState<Project[]>([])
+  const [deleting, setDeleting] = useState(false)
+  const deletingRef = useRef(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null)
 
   const loadSequence = useRef(0)
   const restoredNominee = useRef<string | null>(null)
@@ -146,6 +187,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     })
   }
   const [voteError, setVoteError] = useState<string | null>(null)
+  const [voteFeedback, setVoteFeedback] = useState<{ error: boolean; message: string } | null>(null)
   const voteRequests = useRef(new Set<string>())
   const clearingVotesRef = useRef(false)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
@@ -161,7 +203,6 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
   const [filters, setFilters] = useState<ProjectFilters>({
     search: '',
     category: '',
-    technology: '',
     department: '',
   })
 
@@ -273,6 +314,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
     setModalOpened(false)
     setCartOpened(false)
     setVoteError(null)
+    setVoteFeedback(null)
+    setSelectedIds(new Set())
+    setPendingDeletion([])
+    setDeleteError(null)
+    setDeleteSuccess(null)
     void loadProjects()
     return () => { loadSequence.current += 1 }
   }, [loadProjects])
@@ -409,10 +455,13 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         ? { ...project, user_vote: result.voted, votes: result.voteCount }
         : project)
 
-      if (!cartOpened) notifications.show({
-        title: result.voted ? 'Vote Recorded' : 'Vote Removed',
-        message: result.voted ? 'Thank you for your vote!' : 'Your vote has been removed',
-        color: 'green',
+      if (result.voted) {
+        setVoteFeedback({
+          error: false,
+          message: language === 'zh' ? '投票已保存，感谢您的参与！' : 'Your vote has been saved. Thank you for voting!',
+        })
+      } else if (!cartOpened) notifications.show({
+        title: 'Vote Removed', message: 'Your vote has been removed', color: 'green',
       })
     } catch (error) {
       if (sequence !== loadSequence.current) return
@@ -424,16 +473,12 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           : `You already have ${limit[1]} saved votes in this award category. Previous votes count too. Remove a vote in My votes, or clear this category to choose again.`
         : language === 'zh' ? translateUiText(message) : message
       setVoteError(displayMessage)
+      setVoteFeedback({ error: true, message: displayMessage })
       if (limit) {
-        setModalOpened(false)
         setCartOpened(true)
         // Reconcile saved votes, including changes made in another tab/session.
         await loadProjects()
-      } else if (!cartOpened) notifications.show({
-        title: 'Error',
-        message: displayMessage,
-        color: 'red',
-      })
+      }
     } finally {
       voteRequests.current.delete(projectId)
       setVotingIds((current) => { const next = new Set(current); next.delete(projectId); return next })
@@ -459,17 +504,12 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                            project.nominee_org_code.toLowerCase().includes(filters.search.toLowerCase())
       
       const matchesCategory = !filters.category || project.category === filters.category
-      const matchesTechnology = !filters.technology || project.technologies.includes(filters.technology)
       const matchesDepartment = !filters.department || project.nominee_org_code.split('-')[0] === filters.department
       
-      return matchesSearch && matchesCategory && matchesTechnology && matchesDepartment
+      return matchesSearch && matchesCategory && matchesDepartment
     })
   }, [projects, filters])
 
-  const technologies = useMemo(
-    () => [...new Set(projects.flatMap((project) => project.technologies))].sort(),
-    [projects]
-  )
   const votedProjects = projects.filter((project) => project.user_vote)
   const departments = useMemo(
     () => [...new Set(projects.map((project) => project.nominee_org_code.split('-')[0]).filter(Boolean))].sort(),
@@ -527,6 +567,43 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           setAssignedJudgeHackathons((current) => new Set(current).add(project.hackathon_id))
         }
       }).catch(() => undefined)
+    }
+  }
+
+  const requestDeletion = (targets: Project[]) => {
+    if (!canDelete || deletingRef.current || !targets.length) return
+    setDeleteError(null)
+    setDeleteSuccess(null)
+    setPendingDeletion(targets)
+  }
+
+  const confirmDeletion = async () => {
+    if (!canDelete || deletingRef.current || !pendingDeletion.length) return
+    deletingRef.current = true
+    setDeleting(true)
+    setDeleteError(null)
+    const ids = pendingDeletion.map((project) => project.id)
+    const sequence = loadSequence.current
+    try {
+      if (ids.length === 1) await IdeaService.deleteIdea(ids[0])
+      else await IdeaService.deleteIdeas(ids)
+      if (sequence !== loadSequence.current) return
+      // Apply only committed deletions; all counts and the vote cart derive from this list.
+      const deletedIds = new Set(ids)
+      setProjects((current) => current.filter((project) => !deletedIds.has(project.id)))
+      setSelectedIds((current) => new Set([...current].filter((id) => !deletedIds.has(id))))
+      if (selectedProject && deletedIds.has(selectedProject.id)) {
+        setSelectedProject(null)
+        setModalOpened(false)
+      }
+      setPendingDeletion([])
+      setDeleteSuccess(language === 'zh' ? `已删除 ${ids.length} 条提名。` : `Deleted ${ids.length} nomination(s).`)
+    } catch (error) {
+      if (sequence !== loadSequence.current) return
+      setDeleteError(error instanceof Error ? error.message : (language === 'zh' ? '删除失败，请重试。' : 'Unable to delete nominations. Please try again.'))
+    } finally {
+      deletingRef.current = false
+      setDeleting(false)
     }
   }
 
@@ -731,17 +808,17 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         <div className="dp-selection-header">
           <Group justify="space-between" align="center">
             <div>
-              <h1 className="dp-section-title dp-selection-title">Meet this year&apos;s nominees</h1>
+              <h1 className="dp-section-title dp-selection-title">{canDelete ? (language === 'zh' ? '提名管理' : 'Manage nominees') : <>Meet this year&apos;s nominees</>}</h1>
             </div>
           </Group>
         </div>
 
-        {user && <details className="dp-voting-rules">
+        {user && !canDelete && <details className="dp-voting-rules">
           <summary>{language === 'zh' ? '查看投票规则' : 'Voting rules'}</summary>
           <ul>
             <li>{language === 'zh' ? '每人每赛道最多4票，各赛道独立计算；每位候选人最多1票，再次点击即可取消。' : 'Up to 4 votes per person per category. Each nominee receives at most one of your votes; click again to remove it.'}</li>
-            <li>{language === 'zh' ? '每次投票或撤票后，至少50%的已投票须投给本部门之外。投1、2、3、4票时，至少分别有1、1、2、2票跨部门。' : 'After every vote or withdrawal, at least 50% must be outside your department: 1, 1, 2 or 2 outside votes for totals of 1, 2, 3 or 4.'}</li>
-            <li>{language === 'zh' ? '请先投跨部门候选人；撤回跨部门票受限时，请先撤回本部门票。可以不投满4票。' : 'Vote outside your department first. If an outside withdrawal is blocked, remove a same-department vote first. You do not have to use all 4 votes.'}</li>
+            <li>{language === 'zh' ? '本部门最多2票，其他部门合计最多2票；两组额度独立，均可投0、1或2票。' : 'Up to 2 votes for your department and up to 2 votes in total for other departments. Each allowance is independent and may be used for 0, 1 or 2 votes.'}</li>
+            <li>{language === 'zh' ? '每赛道可投0–4票，无需投满；投票和撤票均不限制先后顺序。' : 'You may cast 0–4 votes per category. You do not have to use all votes, and may vote or withdraw in any order.'}</li>
             <li>{language === 'zh' ? '投票账号和候选人须能唯一匹配BD名册，部门按Org.code中“-”前的部分识别，例如BD/DPA-SRE3属于BD/DPA。' : 'Voters and nominees must uniquely match the BD roster. Department is the Org.code prefix before “-”, e.g. BD/DPA-SRE3 belongs to BD/DPA.'}</li>
           </ul>
         </details>}
@@ -783,13 +860,6 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
               />
               <Select
-                placeholder="Filter by tag"
-                data={technologies}
-                value={filters.technology}
-                onChange={(value) => setFilters(prev => ({ ...prev, technology: value || '' }))}
-                clearable
-              />
-              <Select
                 placeholder="Filter by department"
                 aria-label="Filter by department"
                 data={departments}
@@ -801,7 +871,38 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           </SimpleGrid>
         </Card>
 
-        <SimpleGrid className="dp-project-grid" cols={1} spacing="md">
+        {canDelete && <Stack gap="sm">
+          <Group justify="space-between">
+            <Checkbox
+              label={language === 'zh' ? `全选当前结果（${filteredProjects.length}）` : `Select all results (${filteredProjects.length})`}
+              styles={{ label: { color: '#d9e1ec' } }}
+              checked={filteredProjects.length > 0 && filteredProjects.every((project) => selectedIds.has(project.id))}
+              indeterminate={filteredProjects.some((project) => selectedIds.has(project.id)) && !filteredProjects.every((project) => selectedIds.has(project.id))}
+              disabled={loading || loadError || deleting || !filteredProjects.length}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked
+                setSelectedIds((current) => {
+                  const next = new Set(current)
+                  filteredProjects.forEach((project) => { if (checked) next.add(project.id); else next.delete(project.id) })
+                  return next
+                })
+              }}
+            />
+            <Group gap="sm">
+              <Button color="red" variant="outline" disabled={loading || loadError || deleting || !selectedIds.size}
+                onClick={() => requestDeletion(projects.filter((project) => selectedIds.has(project.id)))}>
+                {language === 'zh' ? `删除选中（${selectedIds.size}）` : `Delete selected (${selectedIds.size})`}
+              </Button>
+              <Button color="red" leftSection={<IconTrash size={16} />} disabled={loading || loadError || deleting || !projects.length}
+                onClick={() => requestDeletion(projects)}>
+                {language === 'zh' ? `一键删除全部（${projects.length}）` : `Delete all (${projects.length})`}
+              </Button>
+            </Group>
+          </Group>
+          {deleteSuccess && <Text c="#d9e1ec" role="status">{deleteSuccess}</Text>}
+        </Stack>}
+
+        <SimpleGrid className="dp-project-grid" cols={{ base: 1, sm: 2 }} spacing="md">
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => (
               <Card key={i} className="dp-project-card" h={330} p="lg">
@@ -825,7 +926,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                         src={project.images[0]}
                         alt={`${project.nominee_name} nomination`}
                         className="dp-candidate-photo"
-                        fit="cover"
+                        fit="contain"
                       />
                     ) : (
                       <div className="dp-nominee-placeholder">
@@ -839,40 +940,39 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                         <span>Voted</span>
                       </div>
                     ) : null}
+                    <Button className="dp-candidate-details-link" size="compact-sm" variant="subtle" onClick={() => openProjectModal(project)}>
+                      View details
+                    </Button>
                   </div>
 
                   <div className="dp-candidate-info">
                   <div className="dp-candidate-scroll" tabIndex={0} role="region" aria-label={language === 'zh' ? `${project.nominee_name} 的报名信息` : `Nomination information for ${project.nominee_name}`}>
-                  <Badge variant="outline" w="fit-content">{project.category}</Badge>
-                  <div>
-                    <Title order={3} mt="sm">{project.title}</Title>
-                    <Group gap={6} mt={5}>
-                      <IconUser size={13} />
-                      <Text size="sm" fw={550} translate="no">{project.nominee_name}</Text>
-                    </Group>
-                    <Text size="sm" c="dimmed" mt={4}><span>Department</span>: <span translate="no">{project.nominee_org_code.split('-')[0] || '—'}</span></Text>
-                  </div>
-                  <Text size="sm" className="dp-candidate-description" mt="md">{project.description}</Text>
+                  {canDelete && <Checkbox mb="sm" checked={selectedIds.has(project.id)} disabled={deleting}
+                    styles={{ label: { color: 'inherit' } }}
+                    label={language === 'zh' ? `选择 ${project.title}` : `Select ${project.title}`}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked
+                      setSelectedIds((current) => {
+                        const next = new Set(current)
+                        if (checked) next.add(project.id); else next.delete(project.id)
+                        return next
+                      })
+                    }} />}
+                  <Title order={3} translate="no">{project.title}</Title>
+                  <Text className="dp-candidate-summary-title" fw={700} mt="md">Summary</Text>
+                  <Text size="sm" className="dp-candidate-description" tabIndex={0} role="region" aria-label={`${project.nominee_name} Summary`}>{nominationSummary(project.description)}</Text>
 
                   <Group gap={6} className="dp-nomination-tags" translate="no">
-                    {project.technologies.slice(0, 2).map((tech) => (
+                    {project.technologies.map((tech) => (
                       <Badge key={tech} size="sm" variant="light" title={tech}>
                         {tech}
                       </Badge>
                     ))}
-                    {project.technologies.length > 2 && (
-                      <Badge size="sm" variant="outline" title={project.technologies.slice(2).join('、')}>
-                        +{project.technologies.length - 2}
-                      </Badge>
-                    )}
                   </Group>
 
                   </div>
                   <Group className="dp-candidate-actions" justify="space-between" align="center" wrap="wrap">
                     <Group gap={6}>
-                      <Button size="compact-sm" variant="subtle" onClick={() => openProjectModal(project)}>
-                        View details
-                      </Button>
                       {project.github_url && (
                         <ActionIcon
                           component="a"
@@ -900,7 +1000,11 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                         </ActionIcon>
                       )}
                     </Group>
-                    <Button
+                    {canDelete ? <Button color="red" leftSection={<IconTrash size={16} />} disabled={deleting || loading || loadError}
+                      aria-label={language === 'zh' ? `删除 ${project.title}` : `Delete ${project.title}`}
+                      onClick={() => requestDeletion([project])}>
+                      {language === 'zh' ? '删除' : 'Delete'}
+                    </Button> : <Button
                       className="dp-vote-button"
                       loading={votingIds.has(project.id)}
                       disabled={clearingVotes}
@@ -914,7 +1018,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                       }}
                     >
                       {project.user_vote ? 'Voted' : 'Vote'} ({project.votes})
-                    </Button>
+                    </Button>}
                   </Group>
                   </div>
                 </div>
@@ -939,7 +1043,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
         </>
         )}
 
-        <Button
+        {!canDelete && <Button
           className="dp-vote-cart-button"
           leftSection={<IconThumbUp size={22} />}
           rightSection={<Badge className="dp-vote-cart-count" variant="filled">{votedProjects.length}</Badge>}
@@ -950,7 +1054,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           onClick={() => setCartOpened((opened) => !opened)}
         >
           {language === 'zh' ? '我的点赞' : 'My votes'}
-        </Button>
+        </Button>}
 
         {cartOpened && <section
           id="vote-cart"
@@ -977,8 +1081,8 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           </Group>
           <div className="dp-vote-cart-body">
           <Stack gap="md">
-            <Text size="sm" c="dimmed">{language === 'zh' ? '点赞后自动保存，可继续浏览候选人并点赞。每赛道最多4票，每次增删后跨部门票占比须至少50%。' : 'Votes are saved immediately. Keep browsing and voting alongside this panel. Up to 4 votes per category; at least 50% outside your department after every change.'}</Text>
-            {voteError && <Alert color="red" role="alert">{voteError}</Alert>}
+            <Text size="sm" c="dimmed">{language === 'zh' ? '点赞后自动保存，可继续浏览候选人并点赞。每赛道最多4票：本部门和其他部门各最多2票，均可少投或不投。' : 'Votes are saved immediately. Keep browsing and voting alongside this panel. Up to 4 votes per category: up to 2 for your department and 2 for other departments. Either allowance may be partly or entirely unused.'}</Text>
+            {voteError && <Alert color="red" styles={{ root: { background: 'transparent' }, message: { color: '#fff' } }} role="alert">{voteError}</Alert>}
             {user && !loading && !loadError && hackathons.filter((award) => projects.some((project) => project.hackathon_id === award.id)).map((award) => (
               <section key={award.id} className="dp-ballot-summary" aria-label={language === 'zh' ? `${award.title} 已投票数` : `Saved votes for ${award.title}`}>
                 <Text size="sm" fw={700}>{award.title}</Text>
@@ -1017,7 +1121,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
                   <Avatar src={project.images[0]} alt={project.nominee_name} size={56} radius="md"><IconUser /></Avatar>
                   <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
                     <Text fw={700} style={{ overflowWrap: 'anywhere' }} translate="no">{project.title}</Text>
-                    <Text size="sm" translate="no">{project.nominee_name}</Text>
+                    {project.nominee_name.trim() !== project.title.trim() && <Text size="sm" translate="no">{project.nominee_name}</Text>}
                     <Badge variant="light" w="fit-content" maw="100%">{project.category}</Badge>
                     <Text size="sm" c="dimmed"><span>Department</span>: <span translate="no">{project.nominee_org_code.split('-')[0] || '—'}</span></Text>
                   </Stack>
@@ -1042,10 +1146,55 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
           </div>
         </section>}
 
+        <Modal
+          opened={voteFeedback !== null}
+          onClose={() => setVoteFeedback(null)}
+          title={voteFeedback?.error ? (language === 'zh' ? '投票未完成' : 'Vote not saved') : (language === 'zh' ? '投票成功' : 'Vote saved')}
+          centered
+          zIndex={300}
+          closeOnClickOutside={false}
+          closeOnEscape={false}
+          withCloseButton={false}
+          classNames={{ content: 'dp-candidate-modal', header: 'dp-candidate-modal-header' }}
+        >
+          <Stack>
+            <Text role={voteFeedback?.error ? 'alert' : 'status'}>{voteFeedback?.message}</Text>
+            <Button onClick={() => setVoteFeedback(null)}>{language === 'zh' ? '确认' : 'Confirm'}</Button>
+          </Stack>
+        </Modal>
+
+        <Modal
+          opened={canDelete && pendingDeletion.length > 0}
+          onClose={() => { if (!deleting) setPendingDeletion([]) }}
+          title={language === 'zh' ? '确认删除提名' : 'Confirm nomination deletion'}
+          centered
+          closeOnClickOutside={false}
+          closeOnEscape={!deleting}
+          withCloseButton={!deleting}
+          classNames={{ content: 'dp-candidate-modal', header: 'dp-candidate-modal-header' }}
+        >
+          <Stack>
+            <Text>{language === 'zh'
+              ? `即将永久删除 ${pendingDeletion.length} 条提名及其关联的投票、评论和评分，无法撤销。`
+              : `Permanently delete ${pendingDeletion.length} nomination(s) and their votes, comments and scores? This cannot be undone.`}</Text>
+            <Stack gap="xs" mah={200} style={{ overflowY: 'auto' }}>
+              {pendingDeletion.map((project) => <Text key={project.id} size="sm" translate="no" style={{ overflowWrap: 'anywhere' }}>{project.title} · {project.category}</Text>)}
+            </Stack>
+            {deleteError && <Text c="red.3" role="alert">{deleteError}</Text>}
+            <Group justify="flex-end">
+              <Button variant="default" disabled={deleting} onClick={() => setPendingDeletion([])}>{language === 'zh' ? '取消' : 'Cancel'}</Button>
+              <Button color="red" loading={deleting} onClick={() => void confirmDeletion()}>{language === 'zh' ? '确认删除' : 'Confirm delete'}</Button>
+            </Group>
+          </Stack>
+        </Modal>
+
         {/* Project Detail Modal */}
         <Modal
           opened={modalOpened}
           onClose={() => setModalOpened(false)}
+          closeOnEscape={voteFeedback === null}
+          closeOnClickOutside={voteFeedback === null}
+          trapFocus={voteFeedback === null}
           title={selectedProject?.title}
           size="xl"
           classNames={{ content: 'dp-candidate-modal', header: 'dp-candidate-modal-header' }}
@@ -1056,7 +1205,7 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
               <Image
                 src={selectedProject.images[0]}
                 alt={`${selectedProject.nominee_name} nomination`}
-                h={300}
+                className="dp-candidate-detail-photo"
                 radius="md"
                 fit="contain"
               />
@@ -1067,7 +1216,16 @@ export function ProjectShowcase({ nominationMode = false }: { nominationMode?: b
             )}
 
             {/* Description */}
-            <Text style={{ whiteSpace: 'pre-wrap' }}>{selectedProject.description}</Text>
+            <div className="dp-candidate-detail-sections">
+              {parseNominationDescription(selectedProject.description).map((section, index) => (
+                <section className="dp-candidate-detail-section" key={index}>
+                  {section.heading && <Title order={3} className="dp-candidate-detail-heading">{section.heading}</Title>}
+                  {section.body.split(/\n\s*\n/).map((paragraph, paragraphIndex) => (
+                    <Text className="dp-candidate-detail-paragraph" key={paragraphIndex}>{paragraph}</Text>
+                  ))}
+                </section>
+              ))}
+            </div>
             <Badge variant="light" w="fit-content">{selectedProject.category}</Badge>
 
             {/* Individual nominee */}

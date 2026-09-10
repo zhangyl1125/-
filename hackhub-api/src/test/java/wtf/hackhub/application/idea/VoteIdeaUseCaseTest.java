@@ -2,6 +2,8 @@ package wtf.hackhub.application.idea;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import wtf.hackhub.domain.*;
 import wtf.hackhub.infrastructure.persistence.IdeaMutationLock;
@@ -87,12 +89,18 @@ class VoteIdeaUseCaseTest {
 		verify(votes, never()).deleteAll(anyIterable());
 	}
 
-	@Test
-	void requires_outside_vote_before_first_own_vote() {
-		UUID own = nomination("BD/DPA-XYZ", "Customer Values");
-		assertThatThrownBy(() -> useCase.execute(own, voter)).isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("50%");
-		assertThat(ballot).isEmpty();
+	@ParameterizedTest
+	@CsvSource({"0,0", "0,1", "0,2", "1,0", "1,1", "1,2", "2,0", "2,1", "2,2"})
+	void accepts_all_optional_department_combinations_in_either_order(int own, int outside) {
+		for (boolean ownFirst : List.of(true, false)) {
+			ballot.clear();
+			for (boolean sameDepartment : List.of(ownFirst, !ownFirst)) {
+				for (int i = 0; i < (sameDepartment ? own : outside); i++)
+					assertThat(useCase.execute(nomination(sameDepartment ? "BD/DPA-XYZ" : "BD/BA-AP",
+							"Customer Values"), voter).voted()).isTrue();
+			}
+			assertThat(ballot).hasSize(own + outside);
+		}
 	}
 	@Test
 	void accepts_two_outside_two_own_and_rejects_fifth() {
@@ -105,36 +113,39 @@ class VoteIdeaUseCaseTest {
 		assertThat(ballot).hasSize(4);
 	}
 	@Test
-	void rejects_own_vote_at_one_outside_one_own() {
-		useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter);
+	void rejects_third_own_vote_even_with_unused_outside_allowance() {
 		useCase.execute(nomination("BD/DPA-XYZ", "Customer Values"), voter);
-		assertThatThrownBy(() -> useCase.execute(nomination("BD/DPA-SRE2", "Customer Values"), voter))
-				.isInstanceOf(IllegalArgumentException.class);
+		useCase.execute(nomination("BD/DPA-SRE2", "Customer Values"), voter);
+		assertThatThrownBy(() -> useCase.execute(nomination("BD/DPA-SRE3", "Customer Values"), voter))
+				.isInstanceOf(VoteIdeaUseCase.OwnDepartmentVoteLimitExceededException.class);
 		assertThat(ballot).hasSize(2);
 	}
 	@Test
-	void cannot_remove_outside_vote_if_it_breaks_ratio() {
+	void can_remove_outside_vote_without_removing_own_vote_first() {
 		UUID outside = nomination("BD/BA-AP", "Customer Values"), own = nomination("BD/DPA-XYZ", "Customer Values");
 		useCase.execute(outside, voter);
 		useCase.execute(own, voter);
-		assertThatThrownBy(() -> useCase.execute(outside, voter))
-				.hasMessageContaining("Remove a same-department vote first");
-		assertThat(ballot).hasSize(2);
-		assertThat(useCase.execute(own, voter).voted()).isFalse();
-		assertThat(useCase.execute(outside, voter).voteCount()).isZero();
+		assertThat(useCase.execute(outside, voter).voted()).isFalse();
+		assertThat(ballot).containsOnlyKeys(own);
+		assertThat(useCase.execute(own, voter).voteCount()).isZero();
 		assertThat(ballot).isEmpty();
 	}
 	@Test
-	void allows_four_outside_votes_and_independent_track_quotas() {
-		for (int i = 0; i < 4; i++)
-			useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter);
+	void rejects_third_outside_vote_and_keeps_track_quotas_independent() {
+		useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter);
+		useCase.execute(nomination("BD/ISA-SSP7", "Customer Values"), voter);
+		assertThatThrownBy(() -> useCase.execute(nomination("BD/PTD-S2P3", "Customer Values"), voter))
+				.isInstanceOf(IllegalArgumentException.class).hasMessageContaining("At most 2");
+		useCase.execute(nomination("BD/DPA-XYZ", "Customer Values"), voter);
+		useCase.execute(nomination("BD/DPA-SRE2", "Customer Values"), voter);
 		useCase.execute(nomination("BD/BA-AP", "Collaboration"), voter);
-		assertThat(ballot).hasSize(5);
+		useCase.execute(nomination("BD/DPA-XYZ", "Collaboration"), voter);
+		assertThat(ballot).hasSize(6);
 	}
 	@Test
 	void tracks_compare_case_insensitively() {
 		for (int i = 0; i < 4; i++)
-			useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter);
+			useCase.execute(nomination(i < 2 ? "BD/BA-AP" : "BD/DPA-XYZ", "Customer Values"), voter);
 		assertThatThrownBy(() -> useCase.execute(nomination("BD/BA-AP", "customer values"), voter))
 				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class);
 	}
@@ -187,24 +198,35 @@ class VoteIdeaUseCaseTest {
 	@Test
 	void independent_awards_do_not_share_quota() {
 		for (int i = 0; i < 4; i++)
-			useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter);
+			useCase.execute(nomination(i < 2 ? "BD/BA-AP" : "BD/DPA-XYZ", "Customer Values"), voter);
 		award = UUID.randomUUID();
 		assertThat(useCase.execute(nomination("BD/BA-AP", "Customer Values"), voter).voted()).isTrue();
 		assertThat(ballot).hasSize(5);
 	}
 
 	@Test
-	void removing_from_two_outside_two_own_requires_removing_own_first() {
+	void can_withdraw_both_outside_votes_from_a_full_ballot() {
 		UUID outside = nomination("BD/BA-AP", "Customer Values");
 		useCase.execute(outside, voter);
-		useCase.execute(nomination("BD/BA-OTHER", "Customer Values"), voter);
+		UUID otherOutside = nomination("BD/BA-OTHER", "Customer Values");
+		useCase.execute(otherOutside, voter);
 		UUID own = nomination("BD/DPA-SRE2", "Customer Values");
 		useCase.execute(own, voter);
 		useCase.execute(nomination("BD/DPA-SRE3", "Customer Values"), voter);
-		assertThatThrownBy(() -> useCase.execute(outside, voter)).hasMessageContaining("50%");
-		useCase.execute(own, voter);
 		assertThat(useCase.execute(outside, voter).voted()).isFalse();
+		assertThat(useCase.execute(otherOutside, voter).voted()).isFalse();
 		assertThat(ballot).hasSize(2);
+	}
+
+	@Test
+	void can_withdraw_votes_from_a_legacy_ballot_above_the_new_allowance() {
+		for (int i = 0; i < 4; i++) {
+			UUID id = nomination("BD/BA-AP", "Customer Values");
+			ballot.put(id, new IdeaVote(id, voter));
+		}
+		for (UUID id : List.copyOf(ballot.keySet()))
+			assertThat(useCase.execute(id, voter).voted()).isFalse();
+		assertThat(ballot).isEmpty();
 	}
 
 	@Test

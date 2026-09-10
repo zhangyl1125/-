@@ -98,20 +98,21 @@ class AwardDepartmentsIT extends PostgresIntegrationTest {
 		for (String name : accounts.keySet())
 			cases.put(name, idea(award, name));
 		UUID swd = accounts.get("ZOU Yi");
-		assertThatThrownBy(() -> votes.execute(cases.get("LUO Joya"), swd)).hasMessageContaining("50%");
+		assertThat(votes.execute(cases.get("LUO Joya"), swd).voted()).isTrue();
+		assertThat(votes.execute(cases.get("LI Yangchun Ted"), swd).voted()).isTrue();
+		assertThatThrownBy(() -> votes.execute(cases.get("ZOU Yi"), swd))
+				.isInstanceOf(VoteIdeaUseCase.OwnDepartmentVoteLimitExceededException.class);
 		votes.execute(cases.get("WANG Nick"), swd);
-		votes.execute(cases.get("LUO Joya"), swd);
-		assertThatThrownBy(() -> votes.execute(cases.get("LI Yangchun Ted"), swd)).hasMessageContaining("50%");
 		votes.execute(cases.get("CHEN Xingxing"), swd);
-		votes.execute(cases.get("LI Yangchun Ted"), swd);
 		assertThatThrownBy(() -> votes.execute(cases.get("XIE Barrie"), swd))
 				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class);
-		assertThatThrownBy(() -> votes.execute(cases.get("WANG Nick"), swd)).hasMessageContaining("50%");
-		assertThat(votes.execute(cases.get("LUO Joya"), swd).voted()).isFalse();
 		assertThat(votes.execute(cases.get("WANG Nick"), swd).voted()).isFalse();
+		assertThat(votes.execute(cases.get("CHEN Xingxing"), swd).voted()).isFalse();
 		UUID hrl = accounts.get("Yiheng.LU");
-		assertThatThrownBy(() -> votes.execute(cases.get("Yaolong.Zhang"), hrl)).hasMessageContaining("50%");
-		for (String name : List.of("XIE Barrie", "ZOU Yi", "WANG Nick", "CHEN Xingxing"))
+		for (String name : List.of("XIE Barrie", "ZOU Yi"))
+			assertThat(votes.execute(cases.get(name), hrl).voted()).isTrue();
+		assertThatThrownBy(() -> votes.execute(cases.get("WANG Nick"), hrl)).hasMessageContaining("At most 2");
+		for (String name : List.of("Yaolong.Zhang", "Yining.MA"))
 			assertThat(votes.execute(cases.get(name), hrl).voted()).isTrue();
 		assertThatThrownBy(() -> votes.execute(cases.get("LUO Joya"), hrl))
 				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class);
@@ -160,16 +161,15 @@ class AwardDepartmentsIT extends PostgresIntegrationTest {
 			assertThat(attachments.get(1).get("name").asText()).isEqualTo(name);
 			assertThat(attachments.get(1).get("nomineeOrgCode").asText()).startsWith("BD/");
 		}
-		for (String name : List.of("ZOU Yi", "LUO Joya", "LI Yangchun Ted", "CHEN Xingxing"))
+		for (String name : List.of("ZOU Yi", "LUO Joya"))
 			votes.execute(cases.get(name), voter);
-		assertThatThrownBy(() -> votes.execute(cases.get("WANG Nick"), voter))
-				.isInstanceOf(VoteIdeaUseCase.VoteLimitExceededException.class);
+		assertThatThrownBy(() -> votes.execute(cases.get("WANG Nick"), voter)).hasMessageContaining("At most 2");
 		UUID other = idea(campaign, "XIE Barrie");
 		votes.execute(other, voter); // Customer Values still has its own quota.
 		for (int i = 0; i < 2; i++)
 			migrate("V021__legacy_award_nominees_and_tracks.sql");
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM idea_votes WHERE user_id=?", Integer.class, voter))
-				.isEqualTo(5);
+				.isEqualTo(3);
 		assertThat(jdbc.queryForObject("SELECT jsonb_array_length(project_attachments) FROM ideas WHERE id=?",
 				Integer.class, cases.get("ZOU Yi"))).isEqualTo(2);
 		votes.clearTrack(campaign, voter, "Innovation Breakthrough");

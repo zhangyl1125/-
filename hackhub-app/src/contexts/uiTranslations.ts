@@ -24,8 +24,7 @@ const uiTranslations: Record<string, string> = {
   "Confirm deletion": "确认删除",
   "Unable to save changes. Please try again.": "修改失败，请重试。",
   "Org. code": "组织编码",
-  "At least 50% of your votes must go outside your department. Vote for another department first.": "跨部门票数必须至少占已投票数的 50%，请先为其他部门候选人投票。",
-  "Keep at least 50% of your votes outside your department. Remove a same-department vote first.": "撤票后跨部门票数仍须至少占 50%，请先撤回一张本部门投票。",
+  "At most 2 votes per award category may go outside your department.": "每赛道最多为其他部门投 2 票；如需更换，请先撤回一张其他部门的投票。",
   "Nominee department is missing or ambiguous in the associate roster. Please contact an administrator.": "人员名册中缺少候选人部门或存在重名，请联系管理员核对。",
   "Unable to load attachment.": "附件加载失败。",
 
@@ -384,7 +383,7 @@ const uiTranslations: Record<string, string> = {
   "Open an assigned award to review nominations and submit your ratings.": "进入已分配的评选，查看报名材料并提交评分。",
   "Unable to load associates for committee assignment. Refresh to retry.": "无法加载员工名单，请刷新后重试。",
   "Unable to load award campaigns.": "无法加载奖项评选。",
-  "Associate voting: up to 4 votes per category. At least 50% must be outside the voter's department after every vote or withdrawal. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.": "员工投票：每个赛道最多 4 票；每次投票或撤票后，跨部门票数须至少占已投票数的 50%。部门按组织代码中“-”前的部分识别：BD/DPA-SRE3 → BD/DPA；BD/BA-AP → BD/BA。组委会排名依据加权评分。",
+  "Associate voting: up to 4 votes per category. Up to 2 votes may go to the voter's department and up to 2 to other departments. Both allowances are optional, with no voting or withdrawal order. Department is the Org.code prefix before “-”: BD/DPA-SRE3 → BD/DPA; BD/BA-AP → BD/BA. Committee rankings use the weighted evaluation score.": "员工投票：每个赛道最多 4 票；本部门最多 2 票，其他部门合计最多 2 票。两组额度均可少投或不投，投票和撤票无先后顺序。部门按组织代码中“-”前的部分识别：BD/DPA-SRE3 → BD/DPA；BD/BA-AP → BD/BA。组委会排名依据加权评分。",
   "Behavior Demonstration": "行为示范",
   "Behavior": "行为示范",
   "Business Impact": "业务影响",
@@ -1163,6 +1162,7 @@ const uiTranslations: Record<string, string> = {
 }
 
 const dynamicTranslations: Array<[RegExp, (...matches: string[]) => string]> = [
+  [/^At most (\d+) votes may be cast for projects from your department \((.+)\)\.$/i, (count, department) => `每赛道最多为本部门（${department}）投 ${count} 票；如需更换，请先撤回一张本部门的投票。`],
   [/^Each participant can cast at most (\d+) votes per award category\.$/i, (count) => `每个奖项的每个赛道最多保留 ${count} 票，请在“我的点赞”中撤票或清空该赛道后重新选择。`],
   [/^(\d+) participants?$/i, (count) => `${count} 位参与者`],
   [/^(\d+) members?$/i, (count) => `${count} 位成员`],

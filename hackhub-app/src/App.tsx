@@ -92,6 +92,7 @@ function App() {
             <Route path="/organizations/new" element={<Navigate to="/" replace />} />
             <Route path="/organizations/:id" element={<Navigate to="/" replace />} />
             <Route path="/admin/users" element={isParticipant ? <Navigate to="/overview" replace /> : <AdminUsers />} />
+            <Route path="/admin/nominees" element={user.role === 'admin' ? <ProjectShowcase managementMode /> : <Navigate to="/projects" replace />} />
             <Route path="/admin/organizations" element={<Navigate to="/" replace />} />
             <Route path="/hackathons/:hackathonId/judge" element={<ReviewAccess><JudgingPanel /></ReviewAccess>} />
             <Route path="/hackathons/:hackathonId/leaderboard" element={<ReviewAccess><Leaderboard /></ReviewAccess>} />

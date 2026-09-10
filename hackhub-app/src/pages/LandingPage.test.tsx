@@ -38,7 +38,7 @@ describe('LandingPage', () => {
   })
 
   it.each([
-    ['participant', false, false], ['participant', true, true], ['admin', false, true],
+    ['manager', false, false], ['participant', false, false], ['participant', true, true], ['admin', false, true],
   ])('shows review access for role %s with assignment %s', async (role, judge, visible) => {
     state.user = { id: 'u1', name: 'Associate', role }
     state.judge = judge
@@ -46,6 +46,8 @@ describe('LandingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Associate' }))
     await waitFor(() => expect(Boolean(screen.queryByRole('menuitem', { name: /评选管理|组委会评分/ }))).toBe(visible))
     await waitFor(() => expect(Boolean(screen.queryByRole('menuitem', { name: '用户管理' }))).toBe(role === 'admin'))
+    expect(Boolean(screen.queryByRole('menuitem', { name: '提名管理' }))).toBe(role === 'admin')
+    if (role === 'admin') expect(screen.getByRole('menuitem', { name: '提名管理' })).toHaveAttribute('href', '/admin/nominees')
   })
 
   it('retains the reference background with immediate poster and loaded video', () => {
